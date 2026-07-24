@@ -32,6 +32,13 @@ struct GxData {
   static constexpr int kNumTemps = 3;
   float tempF[kNumTemps] = {0};
   bool tempOk[kNumTemps] = {false};  // per-sensor, non-fatal (Ruuvis nap)
+
+  // Mopeka LPG tanks (com.victronenergy.tank, reg 3004 = level% x10). A tank
+  // whose sensor died falls off D-Bus entirely (unit stops answering) — its
+  // slot reads not-ok and displays '--'. Order follows GX_TANK_UNITS.
+  static constexpr int kNumTanks = 3;
+  float tankPct[kNumTanks] = {0};
+  bool tankOk[kNumTanks] = {false};
 };
 
 // One polling round (4 short reads on a kept-alive connection). Returns true

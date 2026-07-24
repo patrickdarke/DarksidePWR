@@ -105,12 +105,15 @@ void loop() {
       if (gxPoll(s_gx)) {
         uiUpdate(s_gx);
         Serial.printf("[gx] soc=%d%% %.2fV %+.1fA %+dW pv=%dW alt=%dW ac=%dW dc=%dW st=%d"
-                      " t0=%.1fF t1=%.1fF t2=%.1fF\n",
+                      " t=%.1f/%.1f/%.1fF lpg=%.0f/%.0f/%.0f%%\n",
                       s_gx.soc, s_gx.battV, s_gx.battA, s_gx.battW,
                       s_gx.pvW, s_gx.altW, s_gx.acW, s_gx.dcW, s_gx.battState,
                       s_gx.tempOk[0] ? s_gx.tempF[0] : -99.0f,
                       s_gx.tempOk[1] ? s_gx.tempF[1] : -99.0f,
-                      s_gx.tempOk[2] ? s_gx.tempF[2] : -99.0f);
+                      s_gx.tempOk[2] ? s_gx.tempF[2] : -99.0f,
+                      s_gx.tankOk[0] ? s_gx.tankPct[0] : -1.0f,
+                      s_gx.tankOk[1] ? s_gx.tankPct[1] : -1.0f,
+                      s_gx.tankOk[2] ? s_gx.tankPct[2] : -1.0f);
       }
     }
     const bool live = s_gx.valid && (millis() - s_gx.lastOkMs) < 10000;
