@@ -210,7 +210,8 @@ void loop() {
   // 'C' = open control page, 'B' = play the charge-complete chirps,
   // 'V' = sweep unit ids for the vebus /Mode register (new installs),
   // 'K' = setup screen with keyboard up, 'D' = arm the MULTI OFF confirm
-  // (the last two exist for capturing documentation screenshots).
+  // (the last two exist for capturing documentation screenshots),
+  // 'M' = memory watermarks (LVGL pool, heap, PSRAM).
   while (Serial.available()) {
     const char c = Serial.read();
     if (c == 'S') dumpScreen();
@@ -220,6 +221,13 @@ void loop() {
     else if (c == 'V') gxRequestSweep();
     else if (c == 'K') uiSetupShowKeyboard();
     else if (c == 'D') uiCtlDemoArmOff();
+    else if (c == 'M') {
+      // LV_MEM_CUSTOM=1 in this build: LVGL allocates from the ESP heap,
+      // so heap-free IS the LVGL watermark (lv_mem_monitor reads zero).
+      Serial.printf("[mem] heap %u (min %u)  psram %u  lvgl=heap (LV_MEM_CUSTOM)\n",
+                    (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMinFreeHeap(),
+                    (unsigned)ESP.getFreePsram());
+    }
   }
 
   const bool wifiUp = WiFi.status() == WL_CONNECTED;
