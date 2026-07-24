@@ -105,7 +105,7 @@ void uiBuild() {
   // 2x2 tiles, right half
   s_tileVal[0] = mkTile(scr, 216, 46, "HOUSE", kText);
   s_tileVal[1] = mkTile(scr, 348, 46, "CURRENT", kAmber);
-  s_tileVal[2] = mkTile(scr, 216, 142, "SOLAR IN", kGreen);
+  s_tileVal[2] = mkTile(scr, 216, 142, "POWER IN", kGreen);
   s_tileVal[3] = mkTile(scr, 348, 142, "AC LOADS", kBlue);
 
   // Footer bar
@@ -139,12 +139,13 @@ void uiUpdate(const GxData& d) {
   lv_label_set_text(s_tileVal[0], buf);
   snprintf(buf, sizeof buf, "%+.1f A", d.battA);
   lv_label_set_text(s_tileVal[1], buf);
-  snprintf(buf, sizeof buf, "%d W", d.pvW);
+  snprintf(buf, sizeof buf, "%d W", d.inW);
   lv_label_set_text(s_tileVal[2], buf);
   snprintf(buf, sizeof buf, "%d W", d.acW);
   lv_label_set_text(s_tileVal[3], buf);
 
-  snprintf(buf, sizeof buf, "DC %d W   ·   NET %+d W", d.dcW, d.battW);
+  snprintf(buf, sizeof buf, "PV %d W  ·  ALT %d W  ·  DC %d W  ·  NET %+d W",
+           d.pvW, d.altW, d.dcW, d.battW);
   lv_label_set_text(s_footLbl, buf);
 }
 

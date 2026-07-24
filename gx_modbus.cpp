@@ -32,8 +32,22 @@ void drop() {
   s_nextAttemptMs = millis() + 3000;
 }
 
-// Modbus FC3 read of `count` holding registers into regs[]; false on any
-// framing/timeout problem (caller drops the connection).
+// Read exactly n bytes with a deadline; false on timeout/close.
+bool readExact(uint8_t* dst, int n, uint32_t deadline) {
+  int got = 0;
+  while (got < n) {
+    if ((int32_t)(deadline - millis()) <= 0) return false;
+    int r = s_sock.read(dst + got, n - got);
+    if (r > 0) got += r;
+    else delay(5);
+  }
+  return true;
+}
+
+// Modbus FC3 read of `count` holding registers into regs[]. Parses the MBAP
+// length first so a Modbus EXCEPTION (e.g. a unit that went away) is consumed
+// cleanly and reported as false without desyncing or stalling the socket —
+// framing/timeout problems also return false (caller drops the connection).
 bool readRegs(uint8_t unit, uint16_t addr, uint16_t count, uint16_t* regs) {
   uint8_t req[12];
   uint16_t tid = s_tid++;
@@ -47,20 +61,17 @@ bool readRegs(uint8_t unit, uint16_t addr, uint16_t count, uint16_t* regs) {
   if (s_sock.write(req, sizeof(req)) != sizeof(req)) return false;
 
   const uint32_t deadline = millis() + 500;
-  const int want = 9 + count * 2;
-  uint8_t resp[9 + 2 * 16];
-  if (want > (int)sizeof(resp)) return false;
-  int got = 0;
-  while (got < want && (int32_t)(deadline - millis()) > 0) {
-    int n = s_sock.read(resp + got, want - got);
-    if (n > 0) got += n;
-    else delay(5);
-  }
-  if (got < want) return false;
-  if (resp[0] != (tid >> 8) || resp[1] != (tid & 0xFF)) return false;
-  if (resp[7] != 3 || resp[8] != count * 2) return false;  // exception or short
+  uint8_t hdr[8];
+  if (!readExact(hdr, sizeof(hdr), deadline)) return false;
+  const int bodyLen = ((hdr[4] << 8) | hdr[5]) - 2;  // after unit id + fc
+  uint8_t body[1 + 2 * 16];
+  if (bodyLen < 1 || bodyLen > (int)sizeof(body)) return false;
+  if (!readExact(body, bodyLen, deadline)) return false;
+  if (hdr[0] != (tid >> 8) || hdr[1] != (tid & 0xFF)) return false;
+  if (hdr[7] != 3) return false;                     // exception response
+  if (body[0] != count * 2 || bodyLen != 1 + count * 2) return false;
   for (int i = 0; i < count; i++)
-    regs[i] = ((uint16_t)resp[9 + 2 * i] << 8) | resp[10 + 2 * i];
+    regs[i] = ((uint16_t)body[1 + 2 * i] << 8) | body[2 + 2 * i];
   return true;
 }
 
@@ -89,6 +100,17 @@ bool gxPoll(GxData& out) {
     drop(); out.valid = false; return false;
   }
 
+  // Orion XS output — NON-FATAL: engine-off/asleep or a re-numbered unit
+  // just shows 0 W rather than failing the whole poll.
+  uint16_t alt[2];
+  if (readRegs(GX_ALT_UNIT, 4100, 2, alt)) {
+    const float altV = alt[0] / 100.0f;
+    const float altA = s16(alt[1]) / 10.0f;
+    out.altW = (int)lroundf(altV * altA);
+  } else {
+    out.altW = 0;
+  }
+
   out.battV = batt[0] / 10.0f;
   out.battA = s16(batt[1]) / 10.0f;
   out.battW = s16(batt[2]);
@@ -97,6 +119,7 @@ bool gxPoll(GxData& out) {
   out.pvW = s16(pv[0]);
   out.acW = s16(ac[0]);
   out.dcW = s16(dc[0]);
+  out.inW = out.pvW + out.altW;
   out.valid = true;
   out.lastOkMs = millis();
   return true;
