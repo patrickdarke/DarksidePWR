@@ -10,3 +10,5 @@
 void uiCtlBuild();                  // create the screen once, after lv_init
 void uiCtlOpen();                   // switch to it
 void uiCtlUpdate(const GxData& d);  // push fresh read-back state
+void uiCtlDemoArmOff();  // arm the MULTI OFF confirm, exactly as a first tap
+                         // would (serial 'D', for docs; no-op if armed)

@@ -196,8 +196,9 @@ void uiCtlBuild() {
   s_altNa = lv_label_create(s_scr);
   lv_obj_set_style_text_font(s_altNa, &lv_font_montserrat_12, 0);
   lv_obj_set_style_text_color(s_altNa, lv_color_hex(kMuted), 0);
-  lv_label_set_text(s_altNa, "needs newer GX firmware");
-  lv_obj_set_pos(s_altNa, 340, 248);
+  lv_label_set_text(s_altNa, "needs newer\nGX firmware");
+  lv_obj_set_width(s_altNa, 126);
+  lv_obj_set_pos(s_altNa, 338, 242);
   lv_obj_add_flag(s_altNa, LV_OBJ_FLAG_HIDDEN);
 
   s_hint = lv_label_create(s_scr);
@@ -214,6 +215,12 @@ void uiCtlOpen() {
   s_prevScr = lv_scr_act();
   disarmOff();
   lv_scr_load(s_scr);
+}
+
+void uiCtlDemoArmOff() {
+  // Real first-tap path via the button's own event — but never a second
+  // one, so 'D' can't confirm an armed OFF.
+  if (!s_offArmed) lv_event_send(s_mpBtn[0], LV_EVENT_CLICKED, nullptr);
 }
 
 void uiCtlUpdate(const GxData& d) {
@@ -262,7 +269,10 @@ void uiCtlUpdate(const GxData& d) {
     styleChip(s_altBtn[0], d.altMode == 1, true);
     styleChip(s_altBtn[1], d.altMode == 4, true);
   } else {
-    lv_obj_clear_flag(s_altNa, LV_OBJ_FLAG_HIDDEN);
+    // The firmware note means "this GX lacks the register" — a plain
+    // disconnect or fault round just mutes the chips like every other row.
+    if (!d.altModeSupported) lv_obj_clear_flag(s_altNa, LV_OBJ_FLAG_HIDDEN);
+    else lv_obj_add_flag(s_altNa, LV_OBJ_FLAG_HIDDEN);
     styleChip(s_altBtn[0], false, false);
     styleChip(s_altBtn[1], false, false);
   }

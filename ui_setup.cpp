@@ -258,6 +258,8 @@ void uiSetupBuild() {
   s_scr = lv_obj_create(nullptr);
   lv_obj_set_style_bg_color(s_scr, lv_color_hex(kBg), 0);
   lv_obj_set_style_bg_opa(s_scr, LV_OPA_COVER, 0);
+  // Fixed layout — never let focus changes scroll the screen around.
+  lv_obj_clear_flag(s_scr, LV_OBJ_FLAG_SCROLLABLE);
 
   lv_obj_t* hdr = lv_label_create(s_scr);
   lv_obj_set_style_text_font(hdr, &lv_font_montserrat_14, 0);
@@ -328,10 +330,13 @@ void uiSetupBuild() {
 
   // Created last so it stacks above the list when shown. Tall keys (152 px /
   // 4 rows) while still clearing the GX row — the slim 36 px input rows above
-  // buy the height back.
+  // buy the height back. NOTE: lv_keyboard self-aligns BOTTOM_MID at create,
+  // so set_pos() coordinates become offsets from that anchor (this once put
+  // the keyboard 16 px past the screen bottom, with the screen silently
+  // scrolling to chase it) — dock it with align, never set_pos.
   s_kb = lv_keyboard_create(s_scr);
   lv_obj_set_size(s_kb, 480, 152);
-  lv_obj_set_pos(s_kb, 0, 168);
+  lv_obj_align(s_kb, LV_ALIGN_BOTTOM_MID, 0, 0);
   lv_obj_set_style_bg_color(s_kb, lv_color_hex(kBg), 0);
   lv_obj_set_style_bg_color(s_kb, lv_color_hex(kTile), LV_PART_ITEMS);
   lv_obj_set_style_text_color(s_kb, lv_color_hex(kText), LV_PART_ITEMS);
@@ -363,4 +368,9 @@ void uiSetupOpen() {
   hideKeyboard();
   lv_scr_load(s_scr);
   startScan();
+}
+
+void uiSetupShowKeyboard() {
+  uiSetupOpen();
+  showKeyboard(s_passTa);
 }
