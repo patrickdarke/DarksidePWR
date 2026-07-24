@@ -50,13 +50,20 @@ partition table keeps the nvs partition); `esptool erase-flash` clears it.
   so a touch-only device can never dim itself to an unreadable screen.
 - Expansion headers: J13 = I²C (IO15/16, shared with touch), J15 = UART1
   (IO17/18). Board has TF slot + mic (pins unverified).
-- Speaker: I2S — BCLK 13, LRC 11, DOUT 12, and GPIO 21 held LOW (the
-  vendor's audio lesson calls the pulldown "necessary"). Pins from the
-  V1.2-1.4 MP3 lesson in the vendor repo. beeper.cpp opens ESP_I2S per
-  chime (nothing held open, no idle hiss); chime plays on its own task.
-  Full-charge chime: arm after 30 consecutive charging samples, fire once
+- Sound (schematic-verified, V1.4 PDF in the vendor repo):
+  - Passive piezo BEEP_5025 on IO8 (net `IO8_BEEP`, SS8050 driver) — THE
+    alert path. beeper.cpp drives it with LEDC at ~4 kHz (its resonance);
+    chirps play on a short task, never on the LVGL loop.
+  - NS4168 I2S mono class-D amp → speaker: BCLK 13, LRC 11, SDATA 12,
+    CTRL = IO21 (the vendor "pull 21 low" quirk is this pin; firmware
+    still parks it LOW). DEPRECATED for alerts 2026-07-24 — the piezo
+    replaced the I2S chime — but the path is verified working (ESP_I2S,
+    begin/end per sound; see git history) if music/voice is ever wanted.
+  - PDM mic on IO9 CLK / IO10 DATA, shared with the wireless-module SPI
+    pads; unused.
+  Full-charge chirps: arm after 30 consecutive charging samples, fire once
   when charging stops with SOC >= kChimeSocPct (99, in the .ino), re-arm
-  next session. Serial 'B' plays it on demand.
+  next session. Serial 'B' plays them on demand.
 - `LovyanGFX_Driver.h` is ELECROW lesson-03 config, unmodified. Vendor repo:
   `Elecrow-RD/CrowPanel-Advance-3.5-HMI-ESP32-S3-AI-Powered-IPS-Touch-Screen-480x320`
   (revs V1.0 vs V1.2-1.4 have separate example trees).
