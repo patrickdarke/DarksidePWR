@@ -1,0 +1,11 @@
+# Real Wi-Fi credentials — copy secrets.h.example to secrets.h and fill in.
+secrets.h
+
+# Build output
+build/
+*.bin
+*.elf
+*.map
+
+# macOS
+.DS_Store
