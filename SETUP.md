@@ -30,6 +30,9 @@ list (e.g. "Temperature sensor [22]" → unit 22). You need:
 - **Alternator** (Orion XS): one unit id (`GX_ALT_UNIT`).
 - **Temperature sensors**: one per sensor (`GX_TEMP_UNITS`).
 - **Tank senders**: one per tank (`GX_TANK_UNITS`).
+- **MultiPlus** (`GX_VEBUS_UNIT`): once flashed, just type `V` into the
+  serial port — the firmware sweeps units 200–247 and prints the vebus
+  candidates.
 
 If in doubt, sweep: read a service-specific register (3304 for temps, 3004
 for tanks, 4100 for the alternator) against units 1–247 and see which

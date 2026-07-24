@@ -86,6 +86,31 @@ in configured units (`-99.0` = sensor not answering) · `lpg=` tank percents
 firmware also prints `[ui] max loop gap NNNms`; single-to-double digits
 means the touchscreen is responsive.
 
+## The control page
+
+The bolt button (next to the gear) opens CONTROL — write access to the
+Victron system over the same local Modbus connection:
+
+![Control page](docs/img/control-screen.png)
+
+- **MULTI** — MultiPlus mode: `OFF` / `CHG` (charger only) / `INV`
+  (inverter only) / `ON`. **OFF kills your AC loads**, so it asks for a
+  second confirming tap within 3 seconds.
+- **SHORE A** — the AC input current limit, in 5 A steps (5–50 A). Note a
+  Digital Multi Control or BMS can own this setting, in which case the GX
+  will snap it back.
+- **RELAYS** — the GX's two relay outputs. They only respond if the relay
+  function is set to *Manual* on the GX (Settings → Relay).
+- **CHG LIMIT** — DVCC maximum charge current for the whole system, 10 A
+  steps, up past 100 A to `NO LIMIT`.
+- **ALTERNATOR** — Orion XS on/off. Needs a GX firmware newer than 3.75;
+  until then the row says so and stays inert.
+
+Every control shows the **GX's own reported state**, refreshed every
+second — not what was last tapped. If a write is rejected or overridden,
+the highlight simply doesn't move (or snaps back), so the truth is always
+on screen. All writes are logged to telemetry as `[ctl] write ...`.
+
 ## Charge-complete chirps
 
 When a real charging session (30+ seconds of `CHARGING`) ends with the
@@ -95,5 +120,6 @@ the charger, clouds) stays silent.
 
 Debug commands (type into the serial terminal): `S` dumps a screenshot of
 the current screen as hex (decode with `tools/capture_screenshot.py`),
-`U` opens the setup screen, `B` plays the charge-complete chirps so you can
-hear what they sound like.
+`U` opens the setup screen, `C` opens the control page, `B` plays the
+charge-complete chirps, `V` sweeps Modbus unit ids to find your MultiPlus
+(`GX_VEBUS_UNIT`) on a new installation.

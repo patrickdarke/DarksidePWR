@@ -16,6 +16,7 @@
 #include "gx_modbus.h"
 #include "secrets.h"
 #include "ui.h"
+#include "ui_control.h"
 #include "ui_setup.h"
 
 namespace {
@@ -102,6 +103,14 @@ void dumpScreen() {
   heap_caps_free(buf);
 }
 
+// Append " key=value" (or " key=-" when the read didn't answer) to the
+// telemetry line.
+void telKV(char* tel, int& off, size_t cap, const char* key, bool ok, int v) {
+  if (off >= (int)cap) return;
+  off += ok ? snprintf(tel + off, cap - off, " %s=%d", key, v)
+            : snprintf(tel + off, cap - off, " %s=-", key);
+}
+
 void touchRead(lv_indev_drv_t*, lv_indev_data_t* data) {
   uint16_t x, y;
   if (gfx.getTouch(&x, &y)) {
@@ -122,7 +131,18 @@ void setup() {
   // every Serial print for its TX timeout — measured as multi-second UI
   // freezes. Timeout 0 = drop output when the buffer is full instead.
   Serial.setTxTimeoutMs(0);
-  Serial.println("\n[pwr] Darkside PWR boot");
+  const char* rr;
+  switch (esp_reset_reason()) {
+    case ESP_RST_POWERON: rr = "poweron"; break;
+    case ESP_RST_SW: rr = "sw"; break;
+    case ESP_RST_USB: rr = "usb"; break;
+    case ESP_RST_PANIC: rr = "PANIC"; break;
+    case ESP_RST_INT_WDT: rr = "INT_WDT"; break;
+    case ESP_RST_TASK_WDT: rr = "TASK_WDT"; break;
+    case ESP_RST_BROWNOUT: rr = "BROWNOUT"; break;
+    default: rr = "other"; break;
+  }
+  Serial.printf("\n[pwr] Darkside PWR boot (reset: %s)\n", rr);
 
   gfx.begin();
   gfx.fillScreen(TFT_BLACK);
@@ -151,6 +171,7 @@ void setup() {
 
   uiBuild();
   uiSetupBuild();
+  uiCtlBuild();
   uiSetLink(0);
 
   // Wi-Fi credentials: NVS (written by the on-device setup screen) wins;
@@ -186,12 +207,15 @@ void loop() {
   lv_timer_handler();
 
   // Debug serial commands: 'S' = screenshot dump, 'U' = open setup screen,
-  // 'B' = play the charge-complete chime (audible test).
+  // 'C' = open control page, 'B' = play the charge-complete chirps,
+  // 'V' = sweep unit ids for the vebus /Mode register (new installs).
   while (Serial.available()) {
     const char c = Serial.read();
     if (c == 'S') dumpScreen();
     else if (c == 'U') uiSetupOpen();
+    else if (c == 'C') uiCtlOpen();
     else if (c == 'B') beeperChime();
+    else if (c == 'V') gxRequestSweep();
   }
 
   const bool wifiUp = WiFi.status() == WL_CONNECTED;
@@ -222,6 +246,7 @@ void loop() {
     s_lastSeq = seq;
     if (s_gx.valid) {
       uiUpdate(s_gx);
+      uiCtlUpdate(s_gx);
 
       // Full-charge chime state machine (see the comment at the top).
       if (s_gx.battState == 1) {
@@ -236,7 +261,7 @@ void loop() {
       }
       // One line per poll carrying every displayed value; sensor sections
       // size themselves to the secrets.h lists (missing sensors: -99 / -1).
-      char tel[224];
+      char tel[288];
       int off = snprintf(tel, sizeof tel,
                          "[gx] soc=%d%% %.2fV %+.1fA %+dW pv=%dW alt=%dW ac=%dW dc=%dW st=%d t=",
                          s_gx.soc, s_gx.battV, s_gx.battA, s_gx.battW,
@@ -250,7 +275,20 @@ void loop() {
         off += snprintf(tel + off, sizeof tel - off, "%s%.0f",
                         i ? "/" : "", s_gx.tankOk[i] ? s_gx.tankPct[i] : -1.0f);
       if (off < (int)sizeof tel)
-        snprintf(tel + off, sizeof tel - off, "%% poll=%lums", (unsigned long)pollMs);
+        off += snprintf(tel + off, sizeof tel - off, "%%");
+      // Controls read-back: MultiPlus mode, shore limit, relays, DVCC
+      // charge limit, alternator mode ('-' = register didn't answer).
+      telKV(tel, off, sizeof tel, "mp", s_gx.mpModeOk, s_gx.mpMode);
+      if (off < (int)sizeof tel)
+        off += s_gx.shoreLimOk
+                   ? snprintf(tel + off, sizeof tel - off, " sh=%.1f", s_gx.shoreLimA)
+                   : snprintf(tel + off, sizeof tel - off, " sh=-");
+      telKV(tel, off, sizeof tel, "r1", s_gx.relayOk, s_gx.relayClosed[0] ? 1 : 0);
+      telKV(tel, off, sizeof tel, "r2", s_gx.relayOk, s_gx.relayClosed[1] ? 1 : 0);
+      telKV(tel, off, sizeof tel, "chg", s_gx.dvccOk, s_gx.dvccLimA);
+      telKV(tel, off, sizeof tel, "am", s_gx.altModeOk, s_gx.altMode);
+      if (off < (int)sizeof tel)
+        snprintf(tel + off, sizeof tel - off, " poll=%lums", (unsigned long)pollMs);
       Serial.println(tel);
     }
   }

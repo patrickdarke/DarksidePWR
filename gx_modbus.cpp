@@ -5,6 +5,7 @@
 #include <ESPmDNS.h>
 
 #include <freertos/FreeRTOS.h>
+#include <freertos/queue.h>
 #include <freertos/semphr.h>
 #include <freertos/task.h>
 
@@ -37,6 +38,16 @@ uint32_t s_pollDurMs = 0;         // duration of the latest attempt
 char s_pendingTarget[40] = "";    // target change posted by the UI
 volatile bool s_targetDirty = false;
 char s_targetShown[40] = "";      // stable buffer returned by gxGetTarget
+
+// Control writes queued by the UI, executed by the poller task.
+struct WriteCmd {
+  uint8_t unit;
+  uint16_t reg;
+  uint16_t val;
+};
+QueueHandle_t s_writeQ = nullptr;
+volatile bool s_sweepReq = false;
+bool s_altModeSupported = true;   // probe once per connection (reg 4119)
 
 void lock() { if (s_mux) xSemaphoreTake(s_mux, portMAX_DELAY); }
 void unlock() { if (s_mux) xSemaphoreGive(s_mux); }
@@ -143,6 +154,37 @@ RegResult readRegs(uint8_t unit, uint16_t addr, uint16_t count, uint16_t* regs) 
 
 inline int s16(uint16_t v) { return (v > 32767) ? (int)v - 65536 : (int)v; }
 
+// Modbus FC6 single-register write, same framing/tri-state rules as
+// readRegs (a good response echoes addr+value; exceptions are consumed
+// cleanly). Poller task only.
+RegResult writeReg(uint8_t unit, uint16_t reg, uint16_t val) {
+  uint8_t req[12];
+  const uint16_t tid = s_tid++;
+  req[0] = tid >> 8; req[1] = tid & 0xFF;
+  req[2] = 0; req[3] = 0;
+  req[4] = 0; req[5] = 6;
+  req[6] = unit;
+  req[7] = 6;                        // FC6 write single register
+  req[8] = reg >> 8; req[9] = reg & 0xFF;
+  req[10] = val >> 8; req[11] = val & 0xFF;
+  if (s_sock.write(req, sizeof(req)) != sizeof(req)) return kRegFault;
+
+  const uint32_t deadline = millis() + 500;
+  uint8_t hdr[8];
+  if (!readExact(hdr, sizeof(hdr), deadline)) return kRegFault;
+  const int bodyLen = ((hdr[4] << 8) | hdr[5]) - 2;
+  uint8_t body[8];
+  if (bodyLen < 1 || bodyLen > (int)sizeof(body)) return kRegFault;
+  if (!readExact(body, bodyLen, deadline)) return kRegFault;
+  if (hdr[0] != (tid >> 8) || hdr[1] != (tid & 0xFF)) return kRegFault;
+  if (hdr[7] != 6) {                 // exception response
+    s_lastExc = body[0];
+    return kRegNoAnswer;
+  }
+  if (bodyLen != 4) return kRegFault;
+  return kRegOk;
+}
+
 }  // namespace
 
 bool gxTempsInF() {
@@ -191,7 +233,8 @@ static bool pollOnce(GxData& out) {
       drop(); out.valid = false; return false;
     }
     s_sock.setNoDelay(true);
-    s_haveSysName = false;  // refresh the system name on each new connection
+    s_haveSysName = false;      // refresh the system name on each new connection
+    s_altModeSupported = true;  // re-probe reg 4119 on each new connection
     Serial.printf("[gx] connected %s:502\n", s_gxIp.toString().c_str());
   }
 
@@ -259,6 +302,50 @@ static bool pollOnce(GxData& out) {
     }
   }
 
+  // Controls state for the CONTROL page — same per-read non-fatal rules.
+  uint16_t cv[2];
+  r = sockOk ? readRegs(GX_VEBUS_UNIT, 33, 1, cv) : kRegFault;
+  if (r == kRegFault) sockOk = false;
+  out.mpModeOk = (r == kRegOk);
+  if (out.mpModeOk) out.mpMode = cv[0];
+
+  r = sockOk ? readRegs(GX_VEBUS_UNIT, 22, 1, cv) : kRegFault;
+  if (r == kRegFault) sockOk = false;
+  out.shoreLimOk = (r == kRegOk);
+  if (out.shoreLimOk) out.shoreLimA = s16(cv[0]) / 10.0f;
+
+  r = sockOk ? readRegs(100, 806, 2, cv) : kRegFault;
+  if (r == kRegFault) sockOk = false;
+  out.relayOk = (r == kRegOk);
+  if (out.relayOk) {
+    out.relayClosed[0] = (cv[0] == 1);
+    out.relayClosed[1] = (cv[1] == 1);
+  }
+
+  r = sockOk ? readRegs(100, 2705, 1, cv) : kRegFault;
+  if (r == kRegFault) sockOk = false;
+  out.dvccOk = (r == kRegOk);
+  if (out.dvccOk) out.dvccLimA = s16(cv[0]);
+
+  // Orion /Mode (4119) only exists on newer GX firmware — one clean
+  // exception per connection marks it unsupported until reconnect.
+  if (s_altModeSupported && sockOk) {
+    r = readRegs(GX_ALT_UNIT, 4119, 1, cv);
+    if (r == kRegFault) {
+      sockOk = false;
+      out.altModeOk = false;
+    } else if (r == kRegNoAnswer) {
+      s_altModeSupported = false;
+      out.altModeOk = false;
+      Serial.println("[ctl] alternator /Mode reg 4119 unavailable on this GX firmware");
+    } else {
+      out.altModeOk = true;
+      out.altMode = cv[0];
+    }
+  } else if (!s_altModeSupported) {
+    out.altModeOk = false;
+  }
+
   // Tank levels — same treatment.
   for (int i = 0; i < GxData::kNumTanks; i++) {
     uint16_t t[1];
@@ -311,6 +398,44 @@ static void netTask(void*) {
       Serial.printf("[setup] gx target set to '%s'\n", applied.c_str());
     }
 
+    // UI-queued control writes — executed here, on the socket owner, then
+    // the round below re-reads state so the next snapshot is read-back
+    // truth. A fault mid-write cycles the socket like any other fault.
+    if (s_writeQ && s_sock.connected()) {
+      WriteCmd c;
+      while (xQueueReceive(s_writeQ, &c, 0) == pdTRUE) {
+        const RegResult wr = writeReg(c.unit, c.reg, c.val);
+        Serial.printf("[ctl] write u%u r%u = %d -> %s\n", c.unit, c.reg,
+                      (int)(int16_t)c.val,
+                      wr == kRegOk ? "ok"
+                      : (wr == kRegNoAnswer ? "exception" : "fault"));
+        if (wr == kRegFault) {
+          s_sock.stop();
+          s_nextAttemptMs = millis();
+          break;
+        }
+      }
+    }
+
+    // Unit-id sweep for new installations (serial 'V').
+    if (s_sweepReq && s_sock.connected()) {
+      s_sweepReq = false;
+      Serial.println("[sweep] units 200-247, vebus /Mode (reg 33)...");
+      uint16_t v[1];
+      for (int u = 200; u <= 247; u++) {
+        const RegResult sr = readRegs((uint8_t)u, 33, 1, v);
+        if (sr == kRegOk && v[0] >= 1 && v[0] <= 4)
+          Serial.printf("[sweep] unit %d: /Mode=%u  <-- vebus candidate\n", u, v[0]);
+        else if (sr == kRegFault) {
+          Serial.println("[sweep] aborted: socket fault");
+          s_sock.stop();
+          s_nextAttemptMs = millis();
+          break;
+        }
+      }
+      Serial.println("[sweep] done");
+    }
+
     const uint32_t t0 = millis();
     const bool ok = pollOnce(local);  // handles Wi-Fi-down itself
     const uint32_t dt = millis() - t0;
@@ -324,17 +449,34 @@ static void netTask(void*) {
     if (!ok && dt > 600)
       Serial.printf("[gx] slow failed poll %lums\n", (unsigned long)dt);
 
-    // ~1 Hz measured from poll start; at least a short breather between.
-    const uint32_t sleepMs = (dt >= 950) ? 50 : (1000 - dt);
-    vTaskDelay(pdMS_TO_TICKS(sleepMs));
+    // ~1 Hz measured from poll start, sliced so a queued control write
+    // starts within ~100 ms instead of waiting out the full second.
+    uint32_t sleepMs = (dt >= 950) ? 50 : (1000 - dt);
+    while (sleepMs > 0) {
+      const uint32_t slice = (sleepMs > 100) ? 100 : sleepMs;
+      vTaskDelay(pdMS_TO_TICKS(slice));
+      sleepMs -= slice;
+      if ((s_writeQ && uxQueueMessagesWaiting(s_writeQ) > 0) || s_sweepReq ||
+          s_targetDirty)
+        break;
+    }
   }
 }
 
 void gxStart() {
   loadPrefs();  // once, before any concurrent access
   s_mux = xSemaphoreCreateMutex();
+  s_writeQ = xQueueCreate(8, sizeof(WriteCmd));
   xTaskCreatePinnedToCore(netTask, "gxpoll", 8192, nullptr, 1, nullptr, 0);
 }
+
+bool gxWrite(uint8_t unit, uint16_t reg, uint16_t value) {
+  if (!s_writeQ) return false;
+  const WriteCmd c = {unit, reg, value};
+  return xQueueSend(s_writeQ, &c, 0) == pdTRUE;
+}
+
+void gxRequestSweep() { s_sweepReq = true; }
 
 uint32_t gxSnapshot(GxData& out, uint32_t* lastPollMs) {
   lock();
