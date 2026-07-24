@@ -12,6 +12,7 @@
 
 #include "LovyanGFX_Driver.h"
 #include "backlight.h"
+#include "beeper.h"
 #include "gx_modbus.h"
 #include "secrets.h"
 #include "ui.h"
@@ -37,6 +38,14 @@ bool s_mdnsUp = false;
 uint32_t s_lastLoopMs = 0;
 uint32_t s_maxGapMs = 0;
 uint32_t s_nextGapReportMs = 0;
+
+// Full-charge chime: arm after >= 30 consecutive charging samples (~30 s,
+// so absorption flapping and passing clouds can't arm it), fire once when
+// charging stops with SOC at/above the threshold, re-arm on the next
+// charge session.
+constexpr int kChimeSocPct = 99;
+int s_chargeRun = 0;
+bool s_chimeArmed = false;
 
 void dispFlush(lv_disp_drv_t* drv, const lv_area_t* area, lv_color_t* px) {
   const uint32_t w = area->x2 - area->x1 + 1;
@@ -66,6 +75,10 @@ void dumpScreen() {
     heap_caps_free(buf);
     return;
   }
+  // The dump must not lose bytes, so give TX a real timeout for its
+  // duration (the caller is a draining capture script, and the UI stalling
+  // during an explicit screenshot is fine); restored to 0 below.
+  Serial.setTxTimeoutMs(250);
   Serial.printf("[shot] begin %dx%d rgb565le\n", dsc.header.w, dsc.header.h);
   static const char kHex[] = "0123456789abcdef";
   char line[129];
@@ -85,6 +98,7 @@ void dumpScreen() {
     n -= chunk;
   }
   Serial.println("[shot] end");
+  Serial.setTxTimeoutMs(0);
   heap_caps_free(buf);
 }
 
@@ -103,11 +117,17 @@ void touchRead(lv_indev_drv_t*, lv_indev_data_t* data) {
 
 void setup() {
   Serial.begin(115200);
+  // Never let USB-CDC backpressure block us: a host that opens the port but
+  // pauses draining (paused terminal, capture script mid-setup) would stall
+  // every Serial print for its TX timeout — measured as multi-second UI
+  // freezes. Timeout 0 = drop output when the buffer is full instead.
+  Serial.setTxTimeoutMs(0);
   Serial.println("\n[pwr] Darkside PWR boot");
 
   gfx.begin();
   gfx.fillScreen(TFT_BLACK);
   backlightInit();           // LEDC PWM on GPIO 38, percent from NVS
+  beeperInit();              // speaker amp quirk pin; I2S opened per chime
 
   lv_init();
   const size_t bufSz = sizeof(lv_color_t) * kLcdW * kLcdH;
@@ -165,12 +185,13 @@ void setup() {
 void loop() {
   lv_timer_handler();
 
-  // Debug serial commands: 'S' = screenshot dump, 'U' = open setup screen
-  // (both run in the LVGL task context, so they're safe to call here).
+  // Debug serial commands: 'S' = screenshot dump, 'U' = open setup screen,
+  // 'B' = play the charge-complete chime (audible test).
   while (Serial.available()) {
     const char c = Serial.read();
     if (c == 'S') dumpScreen();
     else if (c == 'U') uiSetupOpen();
+    else if (c == 'B') beeperChime();
   }
 
   const bool wifiUp = WiFi.status() == WL_CONNECTED;
@@ -201,6 +222,18 @@ void loop() {
     s_lastSeq = seq;
     if (s_gx.valid) {
       uiUpdate(s_gx);
+
+      // Full-charge chime state machine (see the comment at the top).
+      if (s_gx.battState == 1) {
+        if (++s_chargeRun >= 30) s_chimeArmed = true;
+      } else {
+        if (s_chimeArmed && s_gx.soc >= kChimeSocPct) {
+          Serial.printf("[beep] charge complete at %d%%, chime\n", s_gx.soc);
+          beeperChime();
+        }
+        s_chimeArmed = false;
+        s_chargeRun = 0;
+      }
       // One line per poll carrying every displayed value; sensor sections
       // size themselves to the secrets.h lists (missing sensors: -99 / -1).
       char tel[224];
