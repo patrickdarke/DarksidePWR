@@ -146,7 +146,7 @@ void uiBuild() {
   s_footLbl = lv_label_create(scr);
   lv_obj_set_style_text_font(s_footLbl, &lv_font_montserrat_14, 0);
   lv_obj_set_style_text_color(s_footLbl, lv_color_hex(kMuted), 0);
-  lv_label_set_text(s_footLbl, "DC -- W   ·   NET -- W");
+  lv_label_set_text(s_footLbl, "DC -- W   NET -- W");
   lv_obj_set_pos(s_footLbl, 16, 298);
 
   // Gear -> Wi-Fi setup screen (footer text lines end well left of it).
@@ -168,7 +168,7 @@ void uiBuild() {
 
 void uiUpdate(const GxData& d) {
   if (!d.valid) return;
-  char buf[48];
+  char buf[64];
 
   // Auto title: follow the GX system name when no manual UI_TITLE is set.
   if (UI_TITLE[0] == '\0' && d.sysNameOk) {
@@ -229,7 +229,9 @@ void uiUpdate(const GxData& d) {
   }
   lv_label_set_text(s_tankLbl, tanks);
 
-  snprintf(buf, sizeof buf, "PV %d W  ·  ALT %d W  ·  DC %d W  ·  NET %+d W",
+  // Triple-space separators like the lines above — the middle dot (U+00B7)
+  // is outside LVGL's montserrat glyph range and renders as a box.
+  snprintf(buf, sizeof buf, "PV %d W   ALT %d W   DC %d W   NET %+d W",
            d.pvW, d.altW, d.dcW, d.battW);
   lv_label_set_text(s_footLbl, buf);
 }

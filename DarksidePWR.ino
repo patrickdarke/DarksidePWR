@@ -48,6 +48,46 @@ void dispFlush(lv_disp_drv_t* drv, const lv_area_t* area, lv_color_t* px) {
   lv_disp_flush_ready(drv);
 }
 
+// Debug: dump the active screen over serial as hex RGB565 (LV_USE_SNAPSHOT
+// renders the widget tree into a PSRAM buffer). Framed by "[shot] begin/end"
+// lines; other tasks' log lines may interleave BETWEEN hex lines — decoders
+// should keep only pure-hex lines. Triggered by serial command 'S'.
+void dumpScreen() {
+  lv_obj_t* scr = lv_scr_act();
+  const uint32_t sz = lv_snapshot_buf_size_needed(scr, LV_IMG_CF_TRUE_COLOR);
+  uint8_t* buf = (uint8_t*)heap_caps_malloc(sz, MALLOC_CAP_SPIRAM);
+  if (!buf) {
+    Serial.println("[shot] alloc failed");
+    return;
+  }
+  lv_img_dsc_t dsc;
+  if (lv_snapshot_take_to_buf(scr, LV_IMG_CF_TRUE_COLOR, &dsc, buf, sz) != LV_RES_OK) {
+    Serial.println("[shot] snapshot failed");
+    heap_caps_free(buf);
+    return;
+  }
+  Serial.printf("[shot] begin %dx%d rgb565le\n", dsc.header.w, dsc.header.h);
+  static const char kHex[] = "0123456789abcdef";
+  char line[129];
+  const uint8_t* p = dsc.data;
+  // data_size is not filled in by lv_snapshot_take_to_buf (LVGL 8.3) —
+  // compute it: TRUE_COLOR at LV_COLOR_DEPTH 16 is 2 bytes per pixel.
+  uint32_t n = (uint32_t)dsc.header.w * dsc.header.h * 2;
+  while (n) {
+    const uint32_t chunk = (n > 64) ? 64 : n;
+    for (uint32_t i = 0; i < chunk; i++) {
+      line[2 * i] = kHex[p[i] >> 4];
+      line[2 * i + 1] = kHex[p[i] & 0xF];
+    }
+    line[2 * chunk] = '\0';
+    Serial.println(line);
+    p += chunk;
+    n -= chunk;
+  }
+  Serial.println("[shot] end");
+  heap_caps_free(buf);
+}
+
 void touchRead(lv_indev_drv_t*, lv_indev_data_t* data) {
   uint16_t x, y;
   if (gfx.getTouch(&x, &y)) {
@@ -125,6 +165,14 @@ void setup() {
 void loop() {
   lv_timer_handler();
 
+  // Debug serial commands: 'S' = screenshot dump, 'U' = open setup screen
+  // (both run in the LVGL task context, so they're safe to call here).
+  while (Serial.available()) {
+    const char c = Serial.read();
+    if (c == 'S') dumpScreen();
+    else if (c == 'U') uiSetupOpen();
+  }
+
   const bool wifiUp = WiFi.status() == WL_CONNECTED;
   if (wifiUp && !s_mdnsUp) {
     s_mdnsUp = MDNS.begin("darksidepwr");
@@ -176,7 +224,9 @@ void loop() {
 
   if ((int32_t)(millis() - s_nextDotMs) >= 0) {
     s_nextDotMs = millis() + 1000;
-    const bool live = s_gx.valid && (millis() - s_gx.lastOkMs) < 10000;
+    // Staleness window only — a failed round with seconds-fresh data is
+    // within tolerance, so brief reconnect cycles don't blink the dot amber.
+    const bool live = s_gx.lastOkMs != 0 && (millis() - s_gx.lastOkMs) < 10000;
     uiSetLink(!wifiUp ? 0 : (live ? 2 : 1));
   }
 
