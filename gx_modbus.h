@@ -25,6 +25,13 @@ struct GxData {
   int dcW = 0;
   int altW = 0;              // Orion XS output (0 when engine off/absent)
   int inW = 0;               // total charge input = pvW + altW
+
+  // Ruuvi temperature sensors via the GX (com.victronenergy.temperature,
+  // unit id = device instance on current Venus; reg 3304 = degC x100).
+  // Order follows GX_TEMP_UNITS/GX_TEMP_LABELS in secrets.h.
+  static constexpr int kNumTemps = 3;
+  float tempF[kNumTemps] = {0};
+  bool tempOk[kNumTemps] = {false};  // per-sensor, non-fatal (Ruuvis nap)
 };
 
 // One polling round (4 short reads on a kept-alive connection). Returns true

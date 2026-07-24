@@ -111,6 +111,14 @@ bool gxPoll(GxData& out) {
     out.altW = 0;
   }
 
+  // Ruuvi temperatures — each NON-FATAL (tags sleep, batteries die).
+  static const uint8_t kTempUnits[GxData::kNumTemps] = GX_TEMP_UNITS;
+  for (int i = 0; i < GxData::kNumTemps; i++) {
+    uint16_t t[1];
+    out.tempOk[i] = readRegs(kTempUnits[i], 3304, 1, t);
+    if (out.tempOk[i]) out.tempF[i] = s16(t[0]) / 100.0f * 9.0f / 5.0f + 32.0f;
+  }
+
   out.battV = batt[0] / 10.0f;
   out.battA = s16(batt[1]) / 10.0f;
   out.battW = s16(batt[2]);
