@@ -3,6 +3,8 @@
 #include <lvgl.h>
 #include <stdio.h>
 
+#include "secrets.h"  // GX_TEMP_LABELS for the temps line
+
 // Darkside PWR — single 480x320 power screen in the DSODash design language:
 // SOC arc on the left, four metric tiles on the right, totals bar below.
 // Palette mirrors the DSODash instrument colors.
@@ -24,7 +26,9 @@ lv_obj_t* s_socLbl = nullptr;
 lv_obj_t* s_stateLbl = nullptr;
 lv_obj_t* s_dot = nullptr;
 lv_obj_t* s_tileVal[4] = {nullptr};   // house V, battery A, solar W, AC W
+lv_obj_t* s_tempLbl = nullptr;
 lv_obj_t* s_footLbl = nullptr;
+const char* kTempNames[GxData::kNumTemps] = GX_TEMP_LABELS;
 
 lv_obj_t* mkTile(lv_obj_t* parent, int x, int y, const char* title, uint32_t valColor) {
   lv_obj_t* t = lv_obj_create(parent);
@@ -116,11 +120,18 @@ void uiBuild() {
   lv_obj_set_size(rule, 448, 1);
   lv_obj_set_pos(rule, 16, 252);
 
+  s_tempLbl = lv_label_create(scr);
+  lv_obj_set_style_text_font(s_tempLbl, &lv_font_montserrat_14, 0);
+  lv_obj_set_style_text_color(s_tempLbl, lv_color_hex(kMuted), 0);
+  lv_label_set_recolor(s_tempLbl, true);
+  lv_label_set_text(s_tempLbl, "TEMPS --");
+  lv_obj_set_pos(s_tempLbl, 16, 260);
+
   s_footLbl = lv_label_create(scr);
   lv_obj_set_style_text_font(s_footLbl, &lv_font_montserrat_14, 0);
   lv_obj_set_style_text_color(s_footLbl, lv_color_hex(kMuted), 0);
   lv_label_set_text(s_footLbl, "DC -- W   ·   NET -- W");
-  lv_obj_set_pos(s_footLbl, 16, 268);
+  lv_obj_set_pos(s_footLbl, 16, 286);
 }
 
 void uiUpdate(const GxData& d) {
@@ -143,6 +154,21 @@ void uiUpdate(const GxData& d) {
   lv_label_set_text(s_tileVal[2], buf);
   snprintf(buf, sizeof buf, "%d W", d.acW);
   lv_label_set_text(s_tileVal[3], buf);
+
+  // Temps line: muted names, bright values (LVGL recolor markup); a sensor
+  // that didn't answer shows "--" rather than a stale number.
+  char temps[128];
+  int off = 0;
+  for (int i = 0; i < GxData::kNumTemps; i++) {
+    if (d.tempOk[i])
+      off += snprintf(temps + off, sizeof(temps) - off,
+                      "%s#8c96aa %s# #e8f0fa %.1f\xC2\xB0#",
+                      i ? "   " : "", kTempNames[i], d.tempF[i]);
+    else
+      off += snprintf(temps + off, sizeof(temps) - off,
+                      "%s#8c96aa %s# #8c96aa --#", i ? "   " : "", kTempNames[i]);
+  }
+  lv_label_set_text(s_tempLbl, temps);
 
   snprintf(buf, sizeof buf, "PV %d W  ·  ALT %d W  ·  DC %d W  ·  NET %+d W",
            d.pvW, d.altW, d.dcW, d.battW);
