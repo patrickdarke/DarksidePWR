@@ -107,7 +107,7 @@ partition table keeps the nvs partition); `esptool erase-flash` clears it.
 ## The Victron system (data source)
 
 Ekrano GX v3.75, `venus.local` / fallback `10.20.30.239` (DHCP reservation),
-VRM installation "Darkside.Overland" (714970), portal id `c0619ab7d41e`.
+VRM installation "Darkside.Overland".
 Devices: MultiPlus 12/2000/80-50, Lynx Smart BMS (battery monitor — there is
 NO SmartShunt), SmartSolar MPPT (ext. control), Orion XS alternator charger,
 3 Mopeka LPG tanks, 3 Ruuvi temperature sensors. Venus OS Large (Node-RED on
