@@ -86,6 +86,14 @@ in configured units (`-99.0` = sensor not answering) · `lpg=` tank percents
 firmware also prints `[ui] max loop gap NNNms`; single-to-double digits
 means the touchscreen is responsive.
 
+## Charge-complete chime
+
+When a real charging session (30+ seconds of `CHARGING`) ends with the
+battery at 99–100 %, the panel plays a short two-note chime through the
+onboard speaker — once per charge session. Charging that stops early (load
+exceeded the charger, clouds) stays silent.
+
 Debug commands (type into the serial terminal): `S` dumps a screenshot of
 the current screen as hex (decode with `tools/capture_screenshot.py`),
-`U` opens the setup screen.
+`U` opens the setup screen, `B` plays the charge-complete chime so you can
+hear what it sounds like.

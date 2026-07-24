@@ -49,7 +49,14 @@ partition table keeps the nvs partition); `esptool erase-flash` clears it.
   persists in NVS `darkside`/`bright`, floored at `kBacklightMinPct` = 10%
   so a touch-only device can never dim itself to an unreadable screen.
 - Expansion headers: J13 = I²C (IO15/16, shared with touch), J15 = UART1
-  (IO17/18). Board has TF slot, mic, speaker (pins unverified).
+  (IO17/18). Board has TF slot + mic (pins unverified).
+- Speaker: I2S — BCLK 13, LRC 11, DOUT 12, and GPIO 21 held LOW (the
+  vendor's audio lesson calls the pulldown "necessary"). Pins from the
+  V1.2-1.4 MP3 lesson in the vendor repo. beeper.cpp opens ESP_I2S per
+  chime (nothing held open, no idle hiss); chime plays on its own task.
+  Full-charge chime: arm after 30 consecutive charging samples, fire once
+  when charging stops with SOC >= kChimeSocPct (99, in the .ino), re-arm
+  next session. Serial 'B' plays it on demand.
 - `LovyanGFX_Driver.h` is ELECROW lesson-03 config, unmodified. Vendor repo:
   `Elecrow-RD/CrowPanel-Advance-3.5-HMI-ESP32-S3-AI-Powered-IPS-Touch-Screen-480x320`
   (revs V1.0 vs V1.2-1.4 have separate example trees).
@@ -67,6 +74,13 @@ partition table keeps the nvs partition); `esptool erase-flash` clears it.
   monitor` loses its buffered output.
 - Telemetry: one `[gx] ...` line per 1 Hz poll carries every displayed value —
   verify changes by telemetry, not by eyeball.
+- HWCDC backpressure law (cost a fake 6 s "UI stall"): a host that OPENS the
+  CDC port but pauses draining makes every Serial print block for its TX
+  timeout — the loop froze seconds at a time. Firmware runs
+  `Serial.setTxTimeoutMs(0)` (drop, never block); the screenshot dump
+  temporarily restores 250 ms so frames arrive intact. If `[ui] max loop
+  gap` ever spikes while a capture/monitor script is mid-setup, suspect the
+  host, not the firmware.
 - Debug serial commands (handled in loop()): `S` dumps the active screen as
   hex RGB565 (decode: `tools/capture_screenshot.py out.png`, or `U 2.0` arg
   to open+shoot the setup screen); `U` opens the setup screen. Screenshots
