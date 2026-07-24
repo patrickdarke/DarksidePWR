@@ -21,27 +21,43 @@ registers verified live against the Darkside.Overland Ekrano (2026-07-24):
 | 817 | AC consumption L1 | W |
 | 860 | DC system power | W |
 
+The Orion XS alternator, temperature sensors, and tank senders are read as
+separate per-device units, non-fatally (a napping sensor shows `--`). Unit
+ids, labels, list lengths, and °F/°C (`TEMPS_IN_F`) are all `secrets.h`
+config — any temperature/tank service the GX knows works, Ruuvi and Mopeka
+are just what this truck runs. Full verified register map in `CLAUDE.md`.
+The header title auto-pulls the GX system name (VRM installation name,
+register 5700) unless `UI_TITLE` in `secrets.h` pins a fixed one.
+
 GX prerequisites (Settings → Integrations): **Modbus TCP Server = Enabled**.
 Addressing: `venus.local` via mDNS, falling back to the pinned IP in
 `secrets.h` (keep a DHCP reservation for the GX).
 
 ## Building
 
-One-time: `cp secrets.h.example secrets.h` and fill in Wi-Fi + GX address.
+One-time: `cp secrets.h.example secrets.h`. Editing it is largely optional —
+the gear button (lower right) opens an on-device setup screen for Wi-Fi
+(scan, pick, type the password on-screen), the GX address, °F/°C, and
+brightness; everything saves to NVS and overrides the secrets.h defaults at
+boot.
 
 ```
 ./build.sh          # compile
 ./build.sh flash    # compile + flash the attached usbmodem port
 ```
 
-`lib/` pins the display stack at the versions ELECROW ships with the panel
-(LVGL 8.3.11 + LovyanGFX 1.1.16 + their `lv_conf.h`); `LovyanGFX_Driver.h`
-is their lesson-03 panel config for board revisions V1.2–V1.4, unmodified.
+`lib/` vendors the display stack: LVGL 8.3.11 (ELECROW's copy + their
+`lv_conf.h`) and LovyanGFX 1.2.26 — deliberately newer than the vendor's
+1.1.16, which does not compile against esp32 core 3.3.10 / IDF 5.5.
+`LovyanGFX_Driver.h` is their lesson-03 panel config for board revisions
+V1.2–V1.4, unmodified.
 Vendor source: github.com/Elecrow-RD/CrowPanel-Advance-3.5-HMI-ESP32-S3-AI-Powered-IPS-Touch-Screen-480x320
 
 ## Status
 
-Skeleton: Wi-Fi + Modbus poll at 1 Hz + the main power screen (SOC arc,
-house V, battery A, solar W, AC W, DC/net footer, link dot). Touch is wired
-but unused. Ideas next: tanks/temps second screen (more Modbus units),
-alternator tile (Orion XS), low-SOC alert, LEDC backlight dimming.
+Working: Wi-Fi + 1 Hz Modbus poll + the power screen — SOC arc, house V,
+battery A, POWER IN (PV + Orion XS alternator), AC loads, Ruuvi temps line,
+Mopeka LPG tanks line (red when low), PV/ALT/DC/NET footer, link dot — plus
+a touch setup screen (gear button: Wi-Fi scanner/picker, on-screen keyboard,
+credentials in NVS, brightness slider with PWM dimming). Ideas next:
+sensor-detail second page (humidity/pressure, Orion detail), low-SOC alert.

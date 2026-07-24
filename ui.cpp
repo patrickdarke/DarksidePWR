@@ -1,26 +1,28 @@
 #include "ui.h"
 
 #include <lvgl.h>
+#include <ctype.h>
 #include <stdio.h>
+#include <string.h>
 
 #include "secrets.h"  // GX_TEMP_LABELS for the temps line
+#include "ui_setup.h"
+#include "ui_theme.h"
 
-// Darkside PWR — single 480x320 power screen in the DSODash design language:
-// SOC arc on the left, four metric tiles on the right, totals bar below.
-// Palette mirrors the DSODash instrument colors.
+// Header title: UI_TITLE from secrets.h wins; when it's "" the GX system
+// name (VRM installation name) is shown as soon as a poll delivers it.
+// The #ifndef keeps older secrets.h files (no UI_TITLE) compiling — they
+// get auto mode.
+#ifndef UI_TITLE
+#define UI_TITLE ""
+#endif
+
+// Darkside PWR — 480x320 power screen in the DSODash design language:
+// SOC arc on the left, four metric tiles on the right, totals bar below,
+// gear button (lower right) into the Wi-Fi setup screen.
 namespace {
 
-constexpr uint32_t kBg = 0x0C1018;
-constexpr uint32_t kTile = 0x111826;
-constexpr uint32_t kRing = 0x1D2634;
-constexpr uint32_t kText = 0xE8F0FA;
-constexpr uint32_t kMuted = 0x8C96AA;
-constexpr uint32_t kTeal = 0x46C8A5;
-constexpr uint32_t kGreen = 0x30C860;
-constexpr uint32_t kAmber = 0xFFC85A;
-constexpr uint32_t kBlue = 0x4696FF;
-constexpr uint32_t kRed = 0xFF5050;
-
+lv_obj_t* s_hdrLbl = nullptr;
 lv_obj_t* s_arc = nullptr;
 lv_obj_t* s_socLbl = nullptr;
 lv_obj_t* s_stateLbl = nullptr;
@@ -29,8 +31,12 @@ lv_obj_t* s_tileVal[4] = {nullptr};   // house V, battery A, solar W, AC W
 lv_obj_t* s_tempLbl = nullptr;
 lv_obj_t* s_tankLbl = nullptr;
 lv_obj_t* s_footLbl = nullptr;
-const char* kTempNames[GxData::kNumTemps] = GX_TEMP_LABELS;
-const char* kTankNames[GxData::kNumTanks] = GX_TANK_LABELS;
+const char* kTempNames[] = GX_TEMP_LABELS;
+const char* kTankNames[] = GX_TANK_LABELS;
+static_assert(sizeof(kTempNames) / sizeof(kTempNames[0]) == GxData::kNumTemps,
+              "GX_TEMP_LABELS length must match GX_TEMP_UNITS");
+static_assert(sizeof(kTankNames) / sizeof(kTankNames[0]) == GxData::kNumTanks,
+              "GX_TANK_LABELS length must match GX_TANK_UNITS");
 constexpr float kTankLowPct = 20.0f;  // below this the level renders RED
 
 lv_obj_t* mkTile(lv_obj_t* parent, int x, int y, const char* title, uint32_t valColor) {
@@ -64,11 +70,11 @@ void uiBuild() {
   lv_obj_set_style_bg_opa(scr, LV_OPA_COVER, 0);
 
   // Header
-  lv_obj_t* hdr = lv_label_create(scr);
-  lv_obj_set_style_text_font(hdr, &lv_font_montserrat_14, 0);
-  lv_obj_set_style_text_color(hdr, lv_color_hex(kMuted), 0);
-  lv_label_set_text(hdr, "DARKSIDE  PWR");
-  lv_obj_set_pos(hdr, 16, 10);
+  s_hdrLbl = lv_label_create(scr);
+  lv_obj_set_style_text_font(s_hdrLbl, &lv_font_montserrat_14, 0);
+  lv_obj_set_style_text_color(s_hdrLbl, lv_color_hex(kMuted), 0);
+  lv_label_set_text(s_hdrLbl, UI_TITLE[0] ? UI_TITLE : "PWR MONITOR");
+  lv_obj_set_pos(s_hdrLbl, 16, 10);
 
   s_dot = lv_obj_create(scr);
   lv_obj_remove_style_all(s_dot);
@@ -142,11 +148,38 @@ void uiBuild() {
   lv_obj_set_style_text_color(s_footLbl, lv_color_hex(kMuted), 0);
   lv_label_set_text(s_footLbl, "DC -- W   ·   NET -- W");
   lv_obj_set_pos(s_footLbl, 16, 298);
+
+  // Gear -> Wi-Fi setup screen (footer text lines end well left of it).
+  lv_obj_t* gear = lv_btn_create(scr);
+  lv_obj_remove_style_all(gear);
+  lv_obj_set_style_bg_color(gear, lv_color_hex(kTile), 0);
+  lv_obj_set_style_bg_opa(gear, LV_OPA_COVER, 0);
+  lv_obj_set_style_bg_color(gear, lv_color_hex(kRing), LV_STATE_PRESSED);
+  lv_obj_set_style_radius(gear, 8, 0);
+  lv_obj_set_size(gear, 40, 32);
+  lv_obj_set_pos(gear, 432, 280);
+  lv_obj_add_event_cb(gear, [](lv_event_t*) { uiSetupOpen(); }, LV_EVENT_CLICKED, nullptr);
+  lv_obj_t* gearLbl = lv_label_create(gear);
+  lv_obj_set_style_text_font(gearLbl, &lv_font_montserrat_14, 0);
+  lv_obj_set_style_text_color(gearLbl, lv_color_hex(kMuted), 0);
+  lv_label_set_text(gearLbl, LV_SYMBOL_SETTINGS);
+  lv_obj_center(gearLbl);
 }
 
 void uiUpdate(const GxData& d) {
   if (!d.valid) return;
   char buf[48];
+
+  // Auto title: follow the GX system name when no manual UI_TITLE is set.
+  if (UI_TITLE[0] == '\0' && d.sysNameOk) {
+    static char shown[17] = "";
+    if (strcmp(shown, d.sysName) != 0) {
+      strcpy(shown, d.sysName);
+      char up[17];
+      for (int i = 0; i < 17; i++) up[i] = (char)toupper((unsigned char)shown[i]);
+      lv_label_set_text(s_hdrLbl, up);
+    }
+  }
 
   lv_arc_set_value(s_arc, d.soc);
   snprintf(buf, sizeof buf, "%d%%", d.soc);
@@ -167,13 +200,13 @@ void uiUpdate(const GxData& d) {
 
   // Temps line: muted names, bright values (LVGL recolor markup); a sensor
   // that didn't answer shows "--" rather than a stale number.
-  char temps[128];
+  char temps[192];
   int off = 0;
-  for (int i = 0; i < GxData::kNumTemps; i++) {
+  for (int i = 0; i < GxData::kNumTemps && off < (int)sizeof(temps); i++) {
     if (d.tempOk[i])
       off += snprintf(temps + off, sizeof(temps) - off,
                       "%s#8c96aa %s# #e8f0fa %.1f\xC2\xB0#",
-                      i ? "   " : "", kTempNames[i], d.tempF[i]);
+                      i ? "   " : "", kTempNames[i], d.temp[i]);
     else
       off += snprintf(temps + off, sizeof(temps) - off,
                       "%s#8c96aa %s# #8c96aa --#", i ? "   " : "", kTempNames[i]);
@@ -181,9 +214,9 @@ void uiUpdate(const GxData& d) {
   lv_label_set_text(s_tempLbl, temps);
 
   // Tanks line: level goes RED below kTankLowPct; dead sensors show '--'.
-  char tanks[144];
+  char tanks[192];
   off = 0;
-  for (int i = 0; i < GxData::kNumTanks; i++) {
+  for (int i = 0; i < GxData::kNumTanks && off < (int)sizeof(tanks); i++) {
     if (d.tankOk[i]) {
       const char* col = (d.tankPct[i] < kTankLowPct) ? "ff5050" : "e8f0fa";
       off += snprintf(tanks + off, sizeof(tanks) - off,
