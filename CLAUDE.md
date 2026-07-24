@@ -23,11 +23,19 @@ cp secrets.h.example secrets.h                  # then fill in Wi-Fi SSID/pass
 ./build.sh flash                                # compile + flash attached panel
 ```
 
-`secrets.h` is gitignored and holds the ONLY copy of real Wi-Fi credentials —
-NEVER put them in a tracked file (this repo's history was verified clean
-before first push; keep it that way). All GX addressing/unit-id config also
-lives there; the committed `secrets.h.example` carries correct defaults for
-everything except the Wi-Fi credentials.
+`secrets.h` is gitignored — NEVER put real credentials in a tracked file
+(this repo's history was verified clean before first push; keep it that
+way). All GX addressing/unit-id config lives there; the committed
+`secrets.h.example` carries correct defaults for everything except the
+Wi-Fi credentials.
+
+Wi-Fi credentials are best set ON DEVICE: gear button (lower right) → Wi-Fi
+setup screen (scan/pick/type). Saved to NVS namespace `darkside`, keys
+`wifi.ssid`/`wifi.pass`; at boot NVS wins over the secrets.h fallback, and
+boot telemetry says which was used: `[pwr] wifi connecting to <ssid> (nvs)`
+vs `(secrets.h)`. So a fresh clone builds and provisions with the example's
+placeholder credentials untouched. NVS survives reflashes (the app3M_fat9M
+partition table keeps the nvs partition); `esptool erase-flash` clears it.
 
 ## Hardware (CrowPanel Advance 3.5", board rev V1.2–V1.4)
 
@@ -36,8 +44,10 @@ everything except the Wi-Fi credentials.
 - Panel: ILI9488, 40 MHz SPI — SCLK 42, MOSI 39, DC 41, CS 40, RST 2;
   `offset_rotation=3` → 480×320 landscape; `invert=true`.
 - Touch: GT911 I²C — SDA 15, SCL 16, INT 47, RST 48, addr 0x14 (wired into
-  LVGL, currently unused).
-- Backlight: plain GPIO 38 HIGH (no PWM wired in firmware yet; LEDC possible).
+  LVGL; used by the gear button → Wi-Fi setup screen).
+- Backlight: LEDC PWM on GPIO 38 (20 kHz, 10-bit — backlight.cpp). Percent
+  persists in NVS `darkside`/`bright`, floored at `kBacklightMinPct` = 10%
+  so a touch-only device can never dim itself to an unreadable screen.
 - Expansion headers: J13 = I²C (IO15/16, shared with touch), J15 = UART1
   (IO17/18). Board has TF slot, mic, speaker (pins unverified).
 - `LovyanGFX_Driver.h` is ELECROW lesson-03 config, unmodified. Vendor repo:
@@ -114,8 +124,20 @@ alternator, 3004 for tanks).
 | 239 | alternator | 4102/4112 | input(starter) V ÷10 (0 when idle) / charge state | |
 | 22/23/25 | temperature (Ruuvi Out/Fridge/In) | 3304 | °C ×100 (3306 humidity ×10, 3308 hPa unused) | ÷100 |
 | 23/24/25 | tank (Blanton/Elijah/Pappy) | 3004 | level % | ÷10 |
+| 100 | settings | 5700 | system name, string[8], 2 ASCII/reg hi-first — in NO released firmware yet: added to dbus_modbustcp 2026-03-17 (4e566cf3, which also added per-device CustomName regs, e.g. tank 3010, temp 3320); v3.75 (current latest) answers exception 2, verified live 2026-07-24 | text |
 
 ### Reliability laws
+
+- ALL GX I/O (mDNS resolve, connect, every register read) runs on a core-0
+  FreeRTOS task ("gxpoll", spawned by `gxStart()`); the LVGL loop on core 1
+  never blocks on the network. Rationale, measured 2026-07-24: inline
+  polling froze the loop 250–1800 ms per second on a degraded GX link —
+  every touch felt laggy. Samples cross via a mutexed snapshot + sequence
+  number (`gxSnapshot`); the loop prints telemetry when a new sample lands
+  (`poll=NNNms` = poll duration on the task, informational). `[ui] max loop
+  gap NNNms` every 10 s is the UI-health metric — single digits is healthy.
+  Setters are task-safe: temps unit is an atomic flag; a GX-target change
+  writes NVS then posts to the task (never touch its socket from the UI).
 
 - System reads (unit 100) are FATAL on failure → drop socket, 3 s backoff,
   re-resolve on reconnect. Sensor reads (alternator/temps/tanks) are
@@ -124,16 +146,59 @@ alternator, 3004 for tanks).
   ("Elijah Craig") drops off D-Bus entirely — its unit stops answering; this
   is normal and self-heals when the sensor returns.
 - `readRegs` parses the MBAP length before the body so Modbus exceptions are
-  consumed cleanly (no socket desync, no 500 ms stall).
+  consumed cleanly (no socket desync, no 500 ms stall). It returns a
+  three-way result: ok / no-answer (clean exception, socket fine) / FAULT
+  (timeout, framing, or TID mismatch — bytes may still be in flight).
+- A FAULT during the sensor reads skips the remaining sensors for that poll
+  (each would stall toward its 500 ms deadline on a desynced stream) and
+  cycles the socket with NO backoff — the GX just answered the system reads,
+  so the box is up. The poll still succeeds with the system values; the
+  skipped sensors show `--` for that one poll. Telemetry signature:
+  `[gx] sensor read fault, cycling connection`.
 
-## UI map (ui.cpp)
+## UI map (ui.cpp + ui_setup.cpp, palette in ui_theme.h)
 
 SOC arc (teal) + big % + CHARGING/DISCHARGING/IDLE · tiles: HOUSE V /
 CURRENT A (amber) / POWER IN W (green, = PV + alternator) / AC LOADS W
-(blue) · footer: temps line (OUT/FRIDGE/IN °F), tanks line (red below
-`kTankLowPct = 20`%), power line (PV · ALT · DC · NET). Link dot: red = no
-Wi-Fi, amber = Wi-Fi but no GX, green = live (10 s staleness window).
-Labels/units are config in `secrets.h`, threshold in `ui.cpp`.
+(blue) · footer: temps line (°F or °C per `TEMPS_IN_F`, default F), tanks
+line (red below `kTankLowPct = 20`%), power line (PV · ALT · DC · NET), gear
+button (432,280) → setup screen. Link dot: red = no Wi-Fi, amber = Wi-Fi but
+no GX, green = live (10 s staleness window). Sensor unit-ids/labels/°F-°C
+are config in `secrets.h`; sensor COUNTS derive from the GX_*_UNITS list
+lengths (ui.cpp static_asserts the label lists match; footer fits ~3 per
+line). Threshold in `ui.cpp`.
+
+Header title: `UI_TITLE` in secrets.h wins; `""` (or a secrets.h from before
+the define existed — #ifndef fallback) = auto-pull the GX system name (VRM
+installation name, reg 5700, uppercased; "PWR MONITOR" until it arrives).
+Auto-pull cannot work on ANY current GX: reg 5700 is in no released
+firmware (v3.75 is the latest and answers exception 2 — the panel logs this
+once per connection and falls back cleanly), so the local secrets.h pins
+UI_TITLE "DARKSIDE  PWR". The first Venus release cut after 2026-03-17
+enables it; names longer than 16 chars will arrive truncated (string[8]).
+
+Setup screen (ui_setup.cpp): async Wi-Fi scan (strongest-first, deduped, top
+12) into a tappable list; SSID + password + GX-target textareas (password
+mode on; GX field takes an mDNS host or IP, cleared = secrets.h default,
+custom hosts do NOT fall back to the pinned IP) with the LVGL keyboard
+(480x152 at y168 — 36 px input rows keep all three fields visible above it,
+keys stay finger-sized); UNITS °F/°C
+toggle button (applies immediately, like brightness — CANCEL doesn't undo
+either); brightness slider; status line lives in the header. SAVE applies
+only fields that differ from their open-time prefills — notably Wi-Fi is
+untouched unless the SSID changed or a password was typed, so saving other
+settings can NEVER wipe a stored password. NVS keys (namespace `darkside`):
+wifi.ssid, wifi.pass, bright, gx.addr, tempF — secrets.h supplies every
+first-boot default.
+SCAN LAW (cost a live debug): esp_wifi_scan_start FAILS while a join attempt
+is in flight, and a bad SSID keeps the radio in a join-retry loop — so
+startScan aborts a non-connected join first, boot never joins placeholder
+creds, and CANCEL-without-save restarts the stored-credential join.
+Tapping a network jumps straight to password entry. SAVE persists to NVS and
+re-joins immediately (main screen's dot shows progress); CANCEL (top right,
+kRing chip — kTile chips are invisible on the physical panel) discards.
+Telemetry: `[setup] scan started` / `scan done: N seen, M listed` /
+`saved ssid=..., joining` (the password is never logged).
 
 ## Parked / next ideas
 
@@ -146,4 +211,5 @@ Labels/units are config in `secrets.h`, threshold in `ui.cpp`.
   charge detection).
 - Second page on touch (GT911 already wired): humidity/pressure from the
   Ruuvis, Orion detail (starter V, state), MultiPlus detail.
-- LEDC backlight dimming on GPIO 38; low-SOC alert.
+- Low-SOC alert. (LEDC dimming is DONE — setup-screen slider; auto day/night
+  dimming could build on it.)
