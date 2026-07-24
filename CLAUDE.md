@@ -154,6 +154,11 @@ alternator, 3004 for tanks).
 | 22/23/25 | temperature (Ruuvi Out/Fridge/In) | 3304 | °C ×100 (3306 humidity ×10, 3308 hPa unused) | ÷100 |
 | 23/24/25 | tank (Blanton/Elijah/Pappy) | 3004 | level % | ÷10 |
 | 100 | settings | 5700 | system name, string[8], 2 ASCII/reg hi-first — in NO released firmware yet: added to dbus_modbustcp 2026-03-17 (4e566cf3, which also added per-device CustomName regs, e.g. tank 3010, temp 3320); v3.75 (current latest) answers exception 2, verified live 2026-07-24 | text |
+| GX_VEBUS_UNIT | vebus (MultiPlus) | 33 W | /Mode: 1 chg-only, 2 inv-only, 3 on, 4 off | 1 |
+| GX_VEBUS_UNIT | vebus | 22 W | /Ac/ActiveIn/CurrentLimit (shore limit) | ÷10 A |
+| 100 | system | 806/807 W | GX relay 0/1 state (0 open, 1 closed; relay function must be Manual) | 1 |
+| 100 | settings | 2705 W | DVCC max charge current, -1 = no limit | A |
+| 239 | alternator | 4119 W | Orion /Mode 1 on / 4 off — same firmware vintage as 5700, expect exception 2 on ≤3.75 (probed once per connection) | 1 |
 
 ### Reliability laws
 
@@ -205,6 +210,19 @@ firmware (v3.75 is the latest and answers exception 2 — the panel logs this
 once per connection and falls back cleanly), so the local secrets.h pins
 UI_TITLE "DARKSIDE  PWR". The first Venus release cut after 2026-03-17
 enables it; names longer than 16 chars will arrive truncated (string[8]).
+
+CONTROL page (ui_control.cpp, bolt chip on the main screen; serial 'C'):
+MultiPlus mode segmented buttons (OFF needs a second confirming tap — it
+kills AC loads), shore-limit stepper (5 A steps, 5-50), GX relay toggles,
+DVCC charge-limit stepper (10 A steps, 10-100 then NO LIMIT), alternator
+ON/OFF (hidden as "needs newer GX firmware" when reg 4119 answers
+exception). WRITE LAW: writes queue via gxWrite() to the poller task (FC6,
+same framing/tri-state as reads; never touch the socket from the UI), the
+task logs "[ctl] write ..." and immediately re-polls, and every widget
+highlights GX READ-BACK state — a rejected or overridden write (DMC/BMS can
+own the shore limit; ext-control solar ignores /Mode) shows itself within a
+second. Telemetry gained mp/sh/r1/r2/chg/am fields. Serial 'V' sweeps units
+200-247 for vebus /Mode to find GX_VEBUS_UNIT on a new install.
 
 Setup screen (ui_setup.cpp): async Wi-Fi scan (strongest-first, deduped, top
 12) into a tappable list; SSID + password + GX-target textareas (password

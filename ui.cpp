@@ -6,6 +6,7 @@
 #include <string.h>
 
 #include "secrets.h"  // GX_TEMP_LABELS for the temps line
+#include "ui_control.h"
 #include "ui_setup.h"
 #include "ui_theme.h"
 
@@ -149,21 +150,31 @@ void uiBuild() {
   lv_label_set_text(s_footLbl, "DC -- W   NET -- W");
   lv_obj_set_pos(s_footLbl, 16, 298);
 
-  // Gear -> Wi-Fi setup screen (footer text lines end well left of it).
-  lv_obj_t* gear = lv_btn_create(scr);
-  lv_obj_remove_style_all(gear);
-  lv_obj_set_style_bg_color(gear, lv_color_hex(kTile), 0);
-  lv_obj_set_style_bg_opa(gear, LV_OPA_COVER, 0);
-  lv_obj_set_style_bg_color(gear, lv_color_hex(kRing), LV_STATE_PRESSED);
-  lv_obj_set_style_radius(gear, 8, 0);
-  lv_obj_set_size(gear, 40, 32);
-  lv_obj_set_pos(gear, 432, 280);
-  lv_obj_add_event_cb(gear, [](lv_event_t*) { uiSetupOpen(); }, LV_EVENT_CLICKED, nullptr);
-  lv_obj_t* gearLbl = lv_label_create(gear);
-  lv_obj_set_style_text_font(gearLbl, &lv_font_montserrat_14, 0);
-  lv_obj_set_style_text_color(gearLbl, lv_color_hex(kMuted), 0);
-  lv_label_set_text(gearLbl, LV_SYMBOL_SETTINGS);
-  lv_obj_center(gearLbl);
+  // Chip buttons, lower right (footer text lines end well left of them):
+  // bolt -> CONTROL page, gear -> setup screen.
+  struct Chip { int x; const char* sym; void (*open)(); };
+  static const Chip kChips[] = {
+      {384, LV_SYMBOL_CHARGE, uiCtlOpen},
+      {432, LV_SYMBOL_SETTINGS, uiSetupOpen},
+  };
+  for (const Chip& c : kChips) {
+    lv_obj_t* b = lv_btn_create(scr);
+    lv_obj_remove_style_all(b);
+    lv_obj_set_style_bg_color(b, lv_color_hex(kTile), 0);
+    lv_obj_set_style_bg_opa(b, LV_OPA_COVER, 0);
+    lv_obj_set_style_bg_color(b, lv_color_hex(kRing), LV_STATE_PRESSED);
+    lv_obj_set_style_radius(b, 8, 0);
+    lv_obj_set_size(b, 40, 32);
+    lv_obj_set_pos(b, c.x, 280);
+    lv_obj_add_event_cb(
+        b, [](lv_event_t* e) { ((void (*)())lv_event_get_user_data(e))(); },
+        LV_EVENT_CLICKED, (void*)c.open);
+    lv_obj_t* l = lv_label_create(b);
+    lv_obj_set_style_text_font(l, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(l, lv_color_hex(kMuted), 0);
+    lv_label_set_text(l, c.sym);
+    lv_obj_center(l);
+  }
 }
 
 void uiUpdate(const GxData& d) {

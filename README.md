@@ -64,5 +64,8 @@ Working: Wi-Fi + 1 Hz Modbus poll + the power screen — SOC arc, house V,
 battery A, POWER IN (PV + Orion XS alternator), AC loads, Ruuvi temps line,
 Mopeka LPG tanks line (red when low), PV/ALT/DC/NET footer, link dot — plus
 a touch setup screen (gear button: Wi-Fi scanner/picker, on-screen keyboard,
-credentials in NVS, brightness slider with PWM dimming). Ideas next:
-sensor-detail second page (humidity/pressure, Orion detail), low-SOC alert.
+credentials in NVS, brightness slider with PWM dimming), a CONTROL page
+(bolt button: MultiPlus mode + shore limit, GX relays, DVCC charge limit,
+alternator on/off — with read-back state and a confirm step on OFF), and a
+charge-complete chirp. Ideas next: sensor-detail second page
+(humidity/pressure, Orion detail), low-SOC alert.

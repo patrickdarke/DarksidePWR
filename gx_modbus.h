@@ -16,6 +16,13 @@
 constexpr uint8_t kGxTempUnits[] = GX_TEMP_UNITS;
 constexpr uint8_t kGxTankUnits[] = GX_TANK_UNITS;
 
+// MultiPlus (vebus service) Modbus unit id — installation-specific like the
+// sensor units; discover with the serial 'V' sweep. 227 is a common value
+// from the static unit mapping.
+#ifndef GX_VEBUS_UNIT
+#define GX_VEBUS_UNIT 227
+#endif
+
 // Live values read from the Victron Ekrano GX over Modbus TCP (port 502,
 // no auth — enable "Modbus TCP Server" under Settings -> Integrations).
 // System aggregates live on unit 100 (com.victronenergy.system), verified
@@ -61,6 +68,20 @@ struct GxData {
   // connection, non-fatally; keeps its last value across reconnects.
   char sysName[17] = {0};
   bool sysNameOk = false;
+
+  // Controls state for the CONTROL page (per-poll, non-fatal). These are
+  // what the GX reports — the page highlights read-back truth, never what
+  // was last commanded.
+  int mpMode = 0;          // vebus /Mode: 1 chg-only, 2 inv-only, 3 on, 4 off
+  bool mpModeOk = false;
+  float shoreLimA = 0;     // vebus /Ac/ActiveIn/CurrentLimit (A)
+  bool shoreLimOk = false;
+  bool relayClosed[2] = {false, false};  // GX relays, regs 806/807
+  bool relayOk = false;
+  int dvccLimA = 0;        // DVCC max charge current (A), -1 = no limit
+  bool dvccOk = false;
+  int altMode = 0;         // Orion XS /Mode: 1 on, 4 off (newer firmware)
+  bool altModeOk = false;  // false when this GX doesn't serve reg 4119
 };
 
 // Runtime settings (setup screen; NVS-backed, secrets.h supplies the
@@ -86,3 +107,13 @@ void gxStart();
 // lastPollMs is given it receives the duration of the most recent poll
 // attempt (successful or not).
 uint32_t gxSnapshot(GxData& out, uint32_t* lastPollMs = nullptr);
+
+// Queue a Modbus FC6 write to run on the poller task (returns false if the
+// queue is full). The task executes queued writes, logs "[ctl] write ...",
+// then immediately re-polls so the next snapshot carries read-back state.
+bool gxWrite(uint8_t unit, uint16_t reg, uint16_t value);
+
+// Ask the poller task to sweep units 200-247 for a vebus /Mode answer and
+// probe the control registers, printing results to serial. Serial cmd 'V';
+// used to discover GX_VEBUS_UNIT for a new installation.
+void gxRequestSweep();
