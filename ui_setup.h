@@ -7,3 +7,4 @@
 // the secrets.h fallback (see DarksidePWR.ino).
 void uiSetupBuild();  // create the screen once, after lv_init
 void uiSetupOpen();   // switch to it and kick off a scan
+void uiSetupShowKeyboard();  // open + pop the keyboard (serial 'K', for docs)

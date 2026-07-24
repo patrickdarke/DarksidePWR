@@ -208,7 +208,9 @@ void loop() {
 
   // Debug serial commands: 'S' = screenshot dump, 'U' = open setup screen,
   // 'C' = open control page, 'B' = play the charge-complete chirps,
-  // 'V' = sweep unit ids for the vebus /Mode register (new installs).
+  // 'V' = sweep unit ids for the vebus /Mode register (new installs),
+  // 'K' = setup screen with keyboard up, 'D' = arm the MULTI OFF confirm
+  // (the last two exist for capturing documentation screenshots).
   while (Serial.available()) {
     const char c = Serial.read();
     if (c == 'S') dumpScreen();
@@ -216,6 +218,8 @@ void loop() {
     else if (c == 'C') uiCtlOpen();
     else if (c == 'B') beeperChime();
     else if (c == 'V') gxRequestSweep();
+    else if (c == 'K') uiSetupShowKeyboard();
+    else if (c == 'D') uiCtlDemoArmOff();
   }
 
   const bool wifiUp = WiFi.status() == WL_CONNECTED;

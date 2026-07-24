@@ -42,6 +42,8 @@ Tap the gear. A network scan starts immediately.
 
 ![Setup screen](docs/img/setup-screen.png)
 
+![Setup screen with keyboard](docs/img/setup-keyboard.png)
+
 **Wi-Fi:** tap a network in the list (strongest first, top 12) — the
 keyboard opens straight onto the password field. Type it, hit the ✓ key,
 then **SAVE**. Open networks: leave the password empty. The panel joins
@@ -95,7 +97,9 @@ Victron system over the same local Modbus connection:
 
 - **MULTI** — MultiPlus mode: `OFF` / `CHG` (charger only) / `INV`
   (inverter only) / `ON`. **OFF kills your AC loads**, so it asks for a
-  second confirming tap within 3 seconds.
+  second confirming tap within 3 seconds:
+
+  ![OFF confirm](docs/img/control-confirm.png)
 - **SHORE A** — the AC input current limit, in 5 A steps (5–50 A). Note a
   Digital Multi Control or BMS can own this setting, in which case the GX
   will snap it back.
@@ -122,4 +126,6 @@ Debug commands (type into the serial terminal): `S` dumps a screenshot of
 the current screen as hex (decode with `tools/capture_screenshot.py`),
 `U` opens the setup screen, `C` opens the control page, `B` plays the
 charge-complete chirps, `V` sweeps Modbus unit ids to find your MultiPlus
-(`GX_VEBUS_UNIT`) on a new installation.
+(`GX_VEBUS_UNIT`) on a new installation, `K` opens setup with the keyboard
+up and `D` arms the MULTI OFF confirm (both exist for capturing the
+screenshots in these guides).

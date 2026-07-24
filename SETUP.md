@@ -88,9 +88,16 @@ data received") — hold **BOOT**, tap **RST**, release BOOT, run
 ## 6. Provision on the touchscreen
 
 1. Boot → the panel shows the power screen with a red dot and (with
-   placeholder credentials) logs `no wifi credentials — tap the gear`.
+   placeholder credentials) logs `no wifi credentials — tap the gear`:
+
+   ![First boot](docs/img/boot-screen.png)
+
 2. Tap the **gear** → scan list populates in ~3 s.
-3. Tap your network → type the password → **✓** → **SAVE**.
+3. Tap your network → type the password on the on-screen keyboard →
+   **✓** → **SAVE**:
+
+   ![Password entry](docs/img/setup-keyboard.png)
+
 4. Dot goes amber (joining) then green (GX answering); numbers appear
    within a couple of seconds.
 

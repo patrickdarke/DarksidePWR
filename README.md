@@ -6,9 +6,11 @@ Polls a Victron GX device (Ekrano) over **Modbus TCP** on the local
 network — no BLE keys, no cloud, works anywhere the truck is.
 
 ![Power screen](docs/img/main-screen.png)
+![Control page](docs/img/control-screen.png)
 
 **Docs:** [Setup Guide](SETUP.md) (GX config → flash → provision) ·
-[User Guide](USERGUIDE.md) (every screen element, setup menu, telemetry).
+[User Guide](USERGUIDE.md) (every screen element, setup menu, control
+page, telemetry).
 
 ## Data path
 

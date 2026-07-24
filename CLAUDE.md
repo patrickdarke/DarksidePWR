@@ -88,11 +88,20 @@ partition table keeps the nvs partition); `esptool erase-flash` clears it.
   temporarily restores 250 ms so frames arrive intact. If `[ui] max loop
   gap` ever spikes while a capture/monitor script is mid-setup, suspect the
   host, not the firmware.
-- Debug serial commands (handled in loop()): `S` dumps the active screen as
-  hex RGB565 (decode: `tools/capture_screenshot.py out.png`, or `U 2.0` arg
-  to open+shoot the setup screen); `U` opens the setup screen. Screenshots
-  in docs/img were made this way — regenerate them when the UI changes, and
-  keep USERGUIDE.md / SETUP.md in sync with UI/flow changes.
+- Debug serial commands (handled in loop()): `S` = screen dump as hex
+  RGB565 (decode: `tools/capture_screenshot.py out.png`, pre-cmd args like
+  `K 1.5` open a screen first), `U` = setup screen, `C` = control page,
+  `B` = chirps, `V` = vebus unit sweep, `K` = setup + keyboard up, `D` =
+  arm the MULTI OFF confirm (real first-tap path, never confirms).
+  Screenshots in docs/img were made this way — regenerate on UI changes and
+  keep USERGUIDE.md / SETUP.md in sync.
+- LVGL KEYBOARD LAW (cost an invisible-keyboard regression): lv_keyboard
+  self-aligns BOTTOM_MID at creation, so lv_obj_set_pos() coordinates become
+  OFFSETS from that anchor — the keyboard sat 16 px past the screen bottom
+  and the screen silently scrolled to chase it (the real cause of the
+  "keyboard too low" feedback). Dock keyboards with lv_obj_align(...,
+  LV_ALIGN_BOTTOM_MID, 0, 0); setup screen has SCROLLABLE cleared so focus
+  changes can never shift the layout again.
 
 ## Toolchain (pinned, vendored)
 

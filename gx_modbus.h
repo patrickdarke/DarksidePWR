@@ -81,7 +81,9 @@ struct GxData {
   int dvccLimA = 0;        // DVCC max charge current (A), -1 = no limit
   bool dvccOk = false;
   int altMode = 0;         // Orion XS /Mode: 1 on, 4 off (newer firmware)
-  bool altModeOk = false;  // false when this GX doesn't serve reg 4119
+  bool altModeOk = false;  // this round's read answered
+  bool altModeSupported = true;  // false only after a clean exception —
+                                 // i.e. this GX firmware lacks reg 4119
 };
 
 // Runtime settings (setup screen; NVS-backed, secrets.h supplies the

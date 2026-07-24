@@ -345,6 +345,7 @@ static bool pollOnce(GxData& out) {
   } else if (!s_altModeSupported) {
     out.altModeOk = false;
   }
+  out.altModeSupported = s_altModeSupported;
 
   // Tank levels — same treatment.
   for (int i = 0; i < GxData::kNumTanks; i++) {
