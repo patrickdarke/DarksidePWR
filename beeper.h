@@ -1,8 +1,10 @@
 #pragma once
 
-// Onboard speaker via I2S (vendor-verified pins for the Advance 3.5"
-// V1.2-V1.4: BCLK 13, LRC 11, DOUT 12; GPIO 21 must be held LOW — the
-// vendor's audio lesson calls this "necessary"). The chime plays on its own
-// short-lived task so neither the LVGL loop nor the GX poller ever blocks.
-void beeperInit();   // pin setup only; I2S is opened per chime
-void beeperChime();  // two-note "charge complete" chime (no-op if playing)
+// Alert sounds on the passive piezo buzzer (BEEP_5025, net IO8_BEEP on the
+// V1.4 schematic, SS8050 transistor driver). Passive = it only sounds while
+// driven, so chirps are LEDC square waves at the part's ~4 kHz resonance,
+// played from a short-lived task (the LVGL loop never blocks). The NS4168
+// I2S speaker path is deprecated for alerts — pins remain documented in
+// CLAUDE.md if music/voice output is ever wanted.
+void beeperInit();   // attach LEDC (silent); park the NS4168 CTRL pin
+void beeperChime();  // double chirp — "charge complete" (no-op if playing)
