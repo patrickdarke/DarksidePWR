@@ -67,6 +67,11 @@ partition table keeps the nvs partition); `esptool erase-flash` clears it.
   monitor` loses its buffered output.
 - Telemetry: one `[gx] ...` line per 1 Hz poll carries every displayed value —
   verify changes by telemetry, not by eyeball.
+- Debug serial commands (handled in loop()): `S` dumps the active screen as
+  hex RGB565 (decode: `tools/capture_screenshot.py out.png`, or `U 2.0` arg
+  to open+shoot the setup screen); `U` opens the setup screen. Screenshots
+  in docs/img were made this way — regenerate them when the UI changes, and
+  keep USERGUIDE.md / SETUP.md in sync with UI/flow changes.
 
 ## Toolchain (pinned, vendored)
 
@@ -74,6 +79,9 @@ partition table keeps the nvs partition); `esptool erase-flash` clears it.
 - `lib/` vendors the display stack; `--libraries ./lib` in build.sh:
   - LVGL **8.3.11** — ELECROW's exact copy + their `lv_conf.h` (montserrat
     12/14/20/28/48 enabled; LVGL v8 API: draw_buf/disp_drv, label recolor).
+    One local conf change: `LV_USE_SNAPSHOT 1` (serial screenshot dump).
+    Montserrat glyph range is ASCII+° only — no middle dot `·` (renders as
+    a box; footer uses triple-space separators instead).
   - LovyanGFX **1.2.26** — DELIBERATE upgrade from vendor's 1.1.16, which
     does not compile against core 3.3.10/IDF 5.5 (i2c_periph_signal.module,
     lcd_periph_signals errors). Same config API.

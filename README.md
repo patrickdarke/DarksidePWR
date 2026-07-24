@@ -5,6 +5,11 @@ CrowPanel Advance 3.5" (ESP32-S3, 480×320 ILI9488 SPI, GT911 touch).
 Polls a Victron GX device (Ekrano) over **Modbus TCP** on the local
 network — no BLE keys, no cloud, works anywhere the truck is.
 
+![Power screen](docs/img/main-screen.png)
+
+**Docs:** [Setup Guide](SETUP.md) (GX config → flash → provision) ·
+[User Guide](USERGUIDE.md) (every screen element, setup menu, telemetry).
+
 ## Data path
 
 `gx_modbus.cpp` reads unit **100** (`com.victronenergy.system`) on port 502,
