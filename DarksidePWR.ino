@@ -104,9 +104,9 @@ void loop() {
     if (wifiUp) {
       if (gxPoll(s_gx)) {
         uiUpdate(s_gx);
-        Serial.printf("[gx] soc=%d%% %.2fV %+.1fA %+dW pv=%dW ac=%dW dc=%dW st=%d\n",
+        Serial.printf("[gx] soc=%d%% %.2fV %+.1fA %+dW pv=%dW alt=%dW ac=%dW dc=%dW st=%d\n",
                       s_gx.soc, s_gx.battV, s_gx.battA, s_gx.battW,
-                      s_gx.pvW, s_gx.acW, s_gx.dcW, s_gx.battState);
+                      s_gx.pvW, s_gx.altW, s_gx.acW, s_gx.dcW, s_gx.battState);
       }
     }
     const bool live = s_gx.valid && (millis() - s_gx.lastOkMs) < 10000;
