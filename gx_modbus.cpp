@@ -39,12 +39,16 @@ char s_pendingTarget[40] = "";    // target change posted by the UI
 volatile bool s_targetDirty = false;
 char s_targetShown[40] = "";      // stable buffer returned by gxGetTarget
 
-// Control writes queued by the UI, executed by the poller task.
+// Control writes queued by the UI, executed by the poller task. Commands
+// expire: a tap made during an outage must not fire minutes later when the
+// GX reappears (imagine a stale MULTI OFF executing after you walked away).
 struct WriteCmd {
   uint8_t unit;
   uint16_t reg;
   uint16_t val;
+  uint32_t queuedMs;
 };
+constexpr uint32_t kWriteTtlMs = 10000;
 QueueHandle_t s_writeQ = nullptr;
 volatile bool s_sweepReq = false;
 bool s_altModeSupported = true;   // probe once per connection (reg 4119)
@@ -218,7 +222,9 @@ void gxSetTarget(const char* addr) {
   if (addr && addr[0]) p.putString("gx.addr", addr);
   else p.remove("gx.addr");
   p.end();
+  lock();  // the poller task reads this buffer under the same mutex
   snprintf(s_pendingTarget, sizeof s_pendingTarget, "%s", addr ? addr : "");
+  unlock();
   s_targetDirty = true;
 }
 
@@ -405,6 +411,11 @@ static void netTask(void*) {
     if (s_writeQ && s_sock.connected()) {
       WriteCmd c;
       while (xQueueReceive(s_writeQ, &c, 0) == pdTRUE) {
+        if (millis() - c.queuedMs > kWriteTtlMs) {
+          Serial.printf("[ctl] dropped stale write u%u r%u (queued %lums ago)\n",
+                        c.unit, c.reg, (unsigned long)(millis() - c.queuedMs));
+          continue;
+        }
         const RegResult wr = writeReg(c.unit, c.reg, c.val);
         Serial.printf("[ctl] write u%u r%u = %d -> %s\n", c.unit, c.reg,
                       (int)(int16_t)c.val,
@@ -473,7 +484,7 @@ void gxStart() {
 
 bool gxWrite(uint8_t unit, uint16_t reg, uint16_t value) {
   if (!s_writeQ) return false;
-  const WriteCmd c = {unit, reg, value};
+  const WriteCmd c = {unit, reg, value, millis()};
   return xQueueSend(s_writeQ, &c, 0) == pdTRUE;
 }
 

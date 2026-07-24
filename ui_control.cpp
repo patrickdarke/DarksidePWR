@@ -31,6 +31,13 @@ bool s_offArmed = false;  // MULTI OFF confirm state
 
 void setHint(const char* txt) { lv_label_set_text(s_hint, txt); }
 
+// Queue a write and surface the result — a full queue (e.g. tapping away
+// during an outage) must not look like success.
+void sendCmd(uint8_t unit, uint16_t reg, uint16_t val) {
+  setHint(gxWrite(unit, reg, val) ? "sent - waiting for GX read-back"
+                                  : "queue full - command not sent");
+}
+
 void styleChip(lv_obj_t* b, bool active, bool known) {
   lv_obj_set_style_bg_color(b, lv_color_hex(active ? kTeal : kTile), 0);
   lv_obj_t* l = lv_obj_get_child(b, 0);
@@ -69,8 +76,7 @@ void mpCb(lv_event_t* e) {
     return;
   }
   if (mode == 4) disarmOff();
-  gxWrite(GX_VEBUS_UNIT, 33, mode);
-  setHint("sent - waiting for GX read-back");
+  sendCmd(GX_VEBUS_UNIT, 33, mode);
 }
 
 void shoreCb(lv_event_t* e) {
@@ -79,15 +85,13 @@ void shoreCb(lv_event_t* e) {
   float a = s_last.shoreLimA + dir * 5.0f;
   if (a < 5.0f) a = 5.0f;
   if (a > 50.0f) a = 50.0f;
-  gxWrite(GX_VEBUS_UNIT, 22, (uint16_t)(a * 10.0f + 0.5f));
-  setHint("sent - waiting for GX read-back");
+  sendCmd(GX_VEBUS_UNIT, 22, (uint16_t)(a * 10.0f + 0.5f));
 }
 
 void relayCb(lv_event_t* e) {
   if (!s_last.relayOk) return;
   const int i = (int)(uintptr_t)lv_event_get_user_data(e);
-  gxWrite(100, (uint16_t)(806 + i), s_last.relayClosed[i] ? 0 : 1);
-  setHint("sent - waiting for GX read-back");
+  sendCmd(100, (uint16_t)(806 + i), s_last.relayClosed[i] ? 0 : 1);
 }
 
 void dvccCb(lv_event_t* e) {
@@ -101,15 +105,13 @@ void dvccCb(lv_event_t* e) {
   } else {
     a = (a < 0) ? 100 : ((a <= 10) ? 10 : a - 10);
   }
-  gxWrite(100, 2705, (uint16_t)(int16_t)a);
-  setHint("sent - waiting for GX read-back");
+  sendCmd(100, 2705, (uint16_t)(int16_t)a);
 }
 
 void altCb(lv_event_t* e) {
   if (!s_last.altModeOk) return;
   const int on = (int)(uintptr_t)lv_event_get_user_data(e);
-  gxWrite(GX_ALT_UNIT, 4119, on ? 1 : 4);
-  setHint("sent - waiting for GX read-back");
+  sendCmd(GX_ALT_UNIT, 4119, on ? 1 : 4);
 }
 
 void closeCb(lv_event_t*) {
