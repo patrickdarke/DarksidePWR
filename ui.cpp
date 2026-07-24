@@ -27,8 +27,11 @@ lv_obj_t* s_stateLbl = nullptr;
 lv_obj_t* s_dot = nullptr;
 lv_obj_t* s_tileVal[4] = {nullptr};   // house V, battery A, solar W, AC W
 lv_obj_t* s_tempLbl = nullptr;
+lv_obj_t* s_tankLbl = nullptr;
 lv_obj_t* s_footLbl = nullptr;
 const char* kTempNames[GxData::kNumTemps] = GX_TEMP_LABELS;
+const char* kTankNames[GxData::kNumTanks] = GX_TANK_LABELS;
+constexpr float kTankLowPct = 20.0f;  // below this the level renders RED
 
 lv_obj_t* mkTile(lv_obj_t* parent, int x, int y, const char* title, uint32_t valColor) {
   lv_obj_t* t = lv_obj_create(parent);
@@ -112,26 +115,33 @@ void uiBuild() {
   s_tileVal[2] = mkTile(scr, 216, 142, "POWER IN", kGreen);
   s_tileVal[3] = mkTile(scr, 348, 142, "AC LOADS", kBlue);
 
-  // Footer bar
+  // Footer block: rule + temps / tanks / power lines
   lv_obj_t* rule = lv_obj_create(scr);
   lv_obj_remove_style_all(rule);
   lv_obj_set_style_bg_color(rule, lv_color_hex(kRing), 0);
   lv_obj_set_style_bg_opa(rule, LV_OPA_COVER, 0);
   lv_obj_set_size(rule, 448, 1);
-  lv_obj_set_pos(rule, 16, 252);
+  lv_obj_set_pos(rule, 16, 248);
 
   s_tempLbl = lv_label_create(scr);
   lv_obj_set_style_text_font(s_tempLbl, &lv_font_montserrat_14, 0);
   lv_obj_set_style_text_color(s_tempLbl, lv_color_hex(kMuted), 0);
   lv_label_set_recolor(s_tempLbl, true);
   lv_label_set_text(s_tempLbl, "TEMPS --");
-  lv_obj_set_pos(s_tempLbl, 16, 260);
+  lv_obj_set_pos(s_tempLbl, 16, 254);
+
+  s_tankLbl = lv_label_create(scr);
+  lv_obj_set_style_text_font(s_tankLbl, &lv_font_montserrat_14, 0);
+  lv_obj_set_style_text_color(s_tankLbl, lv_color_hex(kMuted), 0);
+  lv_label_set_recolor(s_tankLbl, true);
+  lv_label_set_text(s_tankLbl, "LPG --");
+  lv_obj_set_pos(s_tankLbl, 16, 276);
 
   s_footLbl = lv_label_create(scr);
   lv_obj_set_style_text_font(s_footLbl, &lv_font_montserrat_14, 0);
   lv_obj_set_style_text_color(s_footLbl, lv_color_hex(kMuted), 0);
   lv_label_set_text(s_footLbl, "DC -- W   ·   NET -- W");
-  lv_obj_set_pos(s_footLbl, 16, 286);
+  lv_obj_set_pos(s_footLbl, 16, 298);
 }
 
 void uiUpdate(const GxData& d) {
@@ -169,6 +179,22 @@ void uiUpdate(const GxData& d) {
                       "%s#8c96aa %s# #8c96aa --#", i ? "   " : "", kTempNames[i]);
   }
   lv_label_set_text(s_tempLbl, temps);
+
+  // Tanks line: level goes RED below kTankLowPct; dead sensors show '--'.
+  char tanks[144];
+  off = 0;
+  for (int i = 0; i < GxData::kNumTanks; i++) {
+    if (d.tankOk[i]) {
+      const char* col = (d.tankPct[i] < kTankLowPct) ? "ff5050" : "e8f0fa";
+      off += snprintf(tanks + off, sizeof(tanks) - off,
+                      "%s#8c96aa %s# #%s %.0f%%#",
+                      i ? "   " : "", kTankNames[i], col, d.tankPct[i]);
+    } else {
+      off += snprintf(tanks + off, sizeof(tanks) - off,
+                      "%s#8c96aa %s# #8c96aa --#", i ? "   " : "", kTankNames[i]);
+    }
+  }
+  lv_label_set_text(s_tankLbl, tanks);
 
   snprintf(buf, sizeof buf, "PV %d W  ·  ALT %d W  ·  DC %d W  ·  NET %+d W",
            d.pvW, d.altW, d.dcW, d.battW);

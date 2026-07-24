@@ -119,6 +119,14 @@ bool gxPoll(GxData& out) {
     if (out.tempOk[i]) out.tempF[i] = s16(t[0]) / 100.0f * 9.0f / 5.0f + 32.0f;
   }
 
+  // Mopeka tank levels — same per-sensor non-fatal treatment.
+  static const uint8_t kTankUnits[GxData::kNumTanks] = GX_TANK_UNITS;
+  for (int i = 0; i < GxData::kNumTanks; i++) {
+    uint16_t t[1];
+    out.tankOk[i] = readRegs(kTankUnits[i], 3004, 1, t);
+    if (out.tankOk[i]) out.tankPct[i] = t[0] / 10.0f;
+  }
+
   out.battV = batt[0] / 10.0f;
   out.battA = s16(batt[1]) / 10.0f;
   out.battW = s16(batt[2]);
