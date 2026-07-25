@@ -6,6 +6,8 @@ build/
 *.bin
 *.elf
 *.map
+# ...but the web-flasher image is meant to ship
+!docs/firmware/*.bin
 
 # macOS
 .DS_Store
