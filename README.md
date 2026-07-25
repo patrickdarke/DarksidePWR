@@ -14,7 +14,7 @@ page, telemetry).
 
 ## Data path
 
-`gx_modbus.cpp` reads unit **100** (`com.victronenergy.system`) on port 502,
+`gx_poller.cpp` reads unit **100** (`com.victronenergy.system`) on port 502,
 registers verified live against the Darkside.Overland Ekrano (2026-07-24):
 
 | Register | Meaning | Scale |

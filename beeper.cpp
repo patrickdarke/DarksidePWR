@@ -35,7 +35,7 @@ void beeperInit() {
   ledcWrite(kPinBeep, 0);  // silent until asked
 }
 
-void beeperChime() {
+void beeperChirp() {
   if (s_busy) return;
   s_busy = true;
   xTaskCreatePinnedToCore(chirpTask, "chirp", 2048, nullptr, 1, nullptr, 0);

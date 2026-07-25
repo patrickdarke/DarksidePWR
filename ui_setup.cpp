@@ -5,9 +5,10 @@
 #include <WiFi.h>
 
 #include "backlight.h"
-#include "gx_modbus.h"  // runtime GX target + temperature unit
-#include "secrets.h"    // compile-time fallback creds for rejoin-on-BACK
+#include "gx_settings.h"  // runtime GX target + temperature unit
+#include "secrets.h"      // compile-time fallback creds for rejoin-on-CANCEL
 #include "ui_theme.h"
+#include "ui_widgets.h"
 
 // Layout (480x320): header row, SSID+SCAN row, PASSWORD+SAVE row, status
 // line, then the bottom region (y 152..320) shared by the scan list and the
@@ -217,21 +218,7 @@ void cancelCb(lv_event_t*) {
 
 lv_obj_t* mkBtn(int x, int y, int w, int h, const char* txt, uint32_t bg,
                 uint32_t fg, lv_event_cb_t cb) {
-  lv_obj_t* b = lv_btn_create(s_scr);
-  lv_obj_remove_style_all(b);
-  lv_obj_set_style_bg_color(b, lv_color_hex(bg), 0);
-  lv_obj_set_style_bg_opa(b, LV_OPA_COVER, 0);
-  lv_obj_set_style_bg_color(b, lv_color_hex(kBg), LV_STATE_PRESSED);
-  lv_obj_set_style_radius(b, 6, 0);
-  lv_obj_set_size(b, w, h);
-  lv_obj_set_pos(b, x, y);
-  lv_obj_add_event_cb(b, cb, LV_EVENT_CLICKED, nullptr);
-  lv_obj_t* l = lv_label_create(b);
-  lv_obj_set_style_text_font(l, &lv_font_montserrat_14, 0);
-  lv_obj_set_style_text_color(l, lv_color_hex(fg), 0);
-  lv_label_set_text(l, txt);
-  lv_obj_center(l);
-  return b;
+  return uiwButton(s_scr, x, y, w, h, txt, bg, fg, cb);
 }
 
 lv_obj_t* mkTa(int x, int y, int w, const char* placeholder, int maxLen) {

@@ -54,17 +54,20 @@ cp secrets.h.example secrets.h
 The display stack (LVGL 8.3.11 + LovyanGFX 1.2.26 + panel config) is
 vendored in `lib/` — nothing else to install.
 
-## 4. Edit secrets.h
+## 4. Edit config.h (and secrets.h for Wi-Fi)
 
-Every field is a *first-boot default* — Wi-Fi, GX address, units, and
-brightness can all be changed later on the touchscreen. The unit-id lists
-are the part worth getting right here:
+`secrets.h` (gitignored) holds only Wi-Fi credentials — and even those are
+optional, since the on-device setup screen covers them. Everything else
+lives in **config.h** with committed defaults; every define there is
+`#ifndef`-guarded, so you may also override any of them from `secrets.h`
+if you prefer keeping your values out of git. The unit-id lists are the
+part worth getting right:
 
-| Define | What | Required? |
+| Define (config.h) | What | Required? |
 |---|---|---|
-| `WIFI_SSID` / `WIFI_PASS` | Wi-Fi fallback credentials | No — on-device setup covers it |
 | `GX_MDNS_HOST` / `GX_FALLBACK_IP` | Where the GX lives | Defaults usually fine |
 | `GX_ALT_UNIT` | Orion XS unit id | For the alternator reading |
+| `GX_VEBUS_UNIT` | MultiPlus unit id | For the CONTROL page (serial `V` finds it) |
 | `GX_TEMP_UNITS` / `GX_TEMP_LABELS` | Temp sensor units + display names | Yes, match lengths |
 | `GX_TANK_UNITS` / `GX_TANK_LABELS` | Tank units + display names | Yes, match lengths |
 | `TEMPS_IN_F` | 1 = °F, 0 = °C default | Toggleable on-device |

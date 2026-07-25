@@ -1,5 +1,5 @@
 #pragma once
-#include "gx_modbus.h"
+#include "gx_poller.h"
 
 // CONTROL page: write access to the Victron system over the same Modbus
 // path the display reads from. MultiPlus mode + shore input current limit,

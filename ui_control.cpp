@@ -4,6 +4,7 @@
 #include <stdio.h>
 
 #include "ui_theme.h"
+#include "ui_widgets.h"
 
 // Layout: five control rows (MultiPlus mode, shore limit, relays, DVCC
 // charge limit, alternator) + a hint line. Writes are queued to the poller
@@ -121,21 +122,8 @@ void closeCb(lv_event_t*) {
 
 lv_obj_t* mkChip(int x, int y, int w, int h, const char* txt, lv_event_cb_t cb,
                  int userData) {
-  lv_obj_t* b = lv_btn_create(s_scr);
-  lv_obj_remove_style_all(b);
-  lv_obj_set_style_bg_color(b, lv_color_hex(kTile), 0);
-  lv_obj_set_style_bg_opa(b, LV_OPA_COVER, 0);
-  lv_obj_set_style_bg_color(b, lv_color_hex(kBg), LV_STATE_PRESSED);
-  lv_obj_set_style_radius(b, 6, 0);
-  lv_obj_set_size(b, w, h);
-  lv_obj_set_pos(b, x, y);
-  lv_obj_add_event_cb(b, cb, LV_EVENT_CLICKED, (void*)(uintptr_t)userData);
-  lv_obj_t* l = lv_label_create(b);
-  lv_obj_set_style_text_font(l, &lv_font_montserrat_14, 0);
-  lv_obj_set_style_text_color(l, lv_color_hex(kText), 0);
-  lv_label_set_text(l, txt);
-  lv_obj_center(l);
-  return b;
+  return uiwButton(s_scr, x, y, w, h, txt, kTile, kText, cb,
+                   (void*)(uintptr_t)userData);
 }
 
 lv_obj_t* mkRowLabel(int y, const char* txt) {

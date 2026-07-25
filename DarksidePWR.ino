@@ -1,7 +1,8 @@
 // Darkside PWR — Victron power monitor for the CrowPanel Advance 3.5"
 // (ESP32-S3, 480x320 ILI9488 SPI, GT911 touch). Polls the Ekrano GX over
-// Modbus TCP (see gx_modbus.h for the verified register map) and renders
-// the DSODash-style power screen (ui.cpp).
+// Modbus TCP (gx_poller.h owns the register map; framing in
+// modbus_transport, runtime settings in gx_settings) and renders the
+// DSODash-style power screen (ui.cpp).
 //
 // Panel bring-up mirrors ELECROW's lesson-03 for the V1.2-V1.4 boards
 // (LovyanGFX_Driver.h is their driver config, unmodified).
@@ -13,7 +14,8 @@
 #include "LovyanGFX_Driver.h"
 #include "backlight.h"
 #include "beeper.h"
-#include "gx_modbus.h"
+#include "gx_poller.h"
+#include "gx_settings.h"
 #include "secrets.h"
 #include "ui.h"
 #include "ui_control.h"
@@ -147,7 +149,7 @@ void setup() {
   gfx.begin();
   gfx.fillScreen(TFT_BLACK);
   backlightInit();           // LEDC PWM on GPIO 38, percent from NVS
-  beeperInit();              // speaker amp quirk pin; I2S opened per chime
+  beeperInit();              // piezo LEDC (silent) + NS4168 CTRL parked low
 
   lv_init();
   const size_t bufSz = sizeof(lv_color_t) * kLcdW * kLcdH;
@@ -217,7 +219,7 @@ void loop() {
     if (c == 'S') dumpScreen();
     else if (c == 'U') uiSetupOpen();
     else if (c == 'C') uiCtlOpen();
-    else if (c == 'B') beeperChime();
+    else if (c == 'B') beeperChirp();
     else if (c == 'V') gxRequestSweep();
     else if (c == 'K') uiSetupShowKeyboard();
     else if (c == 'D') uiCtlDemoArmOff();
@@ -260,13 +262,13 @@ void loop() {
       uiUpdate(s_gx);
       uiCtlUpdate(s_gx);
 
-      // Full-charge chime state machine (see the comment at the top).
+      // Full-charge chirp state machine (see the comment at the top).
       if (s_gx.battState == 1) {
         if (++s_chargeRun >= 30) s_chimeArmed = true;
       } else {
         if (s_chimeArmed && s_gx.soc >= kChimeSocPct) {
           Serial.printf("[beep] charge complete at %d%%, chime\n", s_gx.soc);
-          beeperChime();
+          beeperChirp();
         }
         s_chimeArmed = false;
         s_chargeRun = 0;
