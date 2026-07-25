@@ -19,6 +19,7 @@ touch-configurable — no computer needed after the first flash.
 | **Temps line** | One reading per configured temperature sensor, in °F or °C (setup screen) |
 | **Tanks line** | LPG levels; a level turns **red** below 20 % |
 | **Power line** | The balance: `PV` solar in, `ALT` alternator in, `DC` DC loads, `NET` battery flow (`+` = charging) |
+| **Bolt (lower right)** | Opens the CONTROL page |
 | **Gear (lower right)** | Opens the setup screen |
 | **Dot (upper right)** | Link status — see below |
 
@@ -32,7 +33,7 @@ entirely (as `ELIJAH --` in the screenshot — its Mopeka battery died); both
 self-heal when the sensor returns. The alternator shows `0 W` when the
 engine is off.
 
-**Title (upper left):** set by `UI_TITLE` in `secrets.h`, or — when that is
+**Title (upper left):** set by `UI_TITLE` in `config.h`, or — when that is
 left `""` — pulled automatically from the GX system name (needs a Venus
 release newer than 3.75; until then the default `PWR MONITOR` shows).
 
@@ -52,7 +53,7 @@ across reboots and reflashes.
 
 **GX ADDRESS:** where to find the Victron GX — an mDNS hostname (`venus`,
 with or without `.local`) or a plain IP (`10.20.30.239`). Clearing the
-field reverts to the `secrets.h` default. When a custom address is set the
+field reverts to the `config.h` default. When a custom address is set the
 compiled-in fallback IP is deliberately ignored, so a typo fails visibly
 instead of silently polling the wrong box.
 
@@ -68,8 +69,8 @@ discards Wi-Fi/GX edits; units and brightness apply the moment you touch
 them and are not undone by CANCEL.
 
 **What persists:** Wi-Fi credentials, GX address, units, and brightness all
-live in flash (NVS) and survive reflashes. `secrets.h` values are only the
-first-boot defaults. `esptool erase-flash` resets everything.
+live in flash (NVS) and survive reflashes. `config.h`/`secrets.h` values
+are only the first-boot defaults. `esptool erase-flash` resets everything.
 
 ## Telemetry (USB serial)
 
@@ -78,12 +79,14 @@ DTR/RTS** (pyserial defaults are fine; forcing them low reboots the panel
 into the bootloader — screen goes black until reset). One line per sample:
 
 ```
-[gx] soc=85% 13.40V +0.3A +4W pv=33W alt=0W ac=9W dc=7W st=0 t=74.9/75.4/79.1F lpg=99/-1/100% poll=2207ms
+[gx] soc=85% 13.40V +0.3A +4W pv=33W alt=0W ac=9W dc=7W st=0 t=74.9/75.4/79.1F lpg=99/-1/100% mp=3 sh=30.0 r1=0 r2=0 chg=200 am=1 poll=2207ms
 ```
 
 `st` battery state (0 idle, 1 charging, 2 discharging) · `t=` temperatures
 in configured units (`-99.0` = sensor not answering) · `lpg=` tank percents
-(`-1` = not answering) · `poll=` how long the poll took on the network task
+(`-1` = not answering) · `mp=` MultiPlus mode, `sh=` shore limit, `r1=`/`r2=`
+relays, `chg=` DVCC charge limit, `am=` alternator mode (`-` = register
+didn't answer) · `poll=` how long the poll took on the network task
 (a GX link-health signal — tens of ms on a healthy LAN). Every 10 s the
 firmware also prints `[ui] max loop gap NNNms`; single-to-double digits
 means the touchscreen is responsive.
@@ -107,13 +110,16 @@ Victron system over the same local Modbus connection:
   function is set to *Manual* on the GX (Settings → Relay).
 - **CHG LIMIT** — DVCC maximum charge current for the whole system, 10 A
   steps, up past 100 A to `NO LIMIT`.
-- **ALTERNATOR** — Orion XS on/off. Needs a GX firmware newer than 3.75;
-  until then the row says so and stays inert.
+- **ALTERNATOR** — Orion XS on/off (works on Venus 3.75, verified live).
+  On older GX firmware lacking the register, the row says so and stays
+  inert.
 
 Every control shows the **GX's own reported state**, refreshed every
 second — not what was last tapped. If a write is rejected or overridden,
 the highlight simply doesn't move (or snaps back), so the truth is always
-on screen. All writes are logged to telemetry as `[ctl] write ...`.
+on screen. Commands queued while the GX is unreachable expire after 10
+seconds instead of firing late. All writes are logged to telemetry as
+`[ctl] write ...`.
 
 ## Charge-complete chirps
 
@@ -128,4 +134,4 @@ the current screen as hex (decode with `tools/capture_screenshot.py`),
 charge-complete chirps, `V` sweeps Modbus unit ids to find your MultiPlus
 (`GX_VEBUS_UNIT`) on a new installation, `K` opens setup with the keyboard
 up and `D` arms the MULTI OFF confirm (both exist for capturing the
-screenshots in these guides).
+screenshots in these guides), `M` prints memory watermarks.

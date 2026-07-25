@@ -19,7 +19,7 @@ firmware side is ~15 minutes.
 1. **Settings → Integrations → Modbus TCP Server → Enabled.** That's the
    whole data path — port 502, no auth, LAN only.
 2. Recommended: give the GX a **DHCP reservation** so its IP never moves,
-   and put that IP in `secrets.h` as the fallback. mDNS (`venus.local`)
+   and put that IP in `config.h` as the fallback. mDNS (`venus.local`)
    works on the same LAN segment but not across routed subnets.
 
 ## 2. Find your device unit ids
@@ -110,13 +110,13 @@ Open the serial port (115200, **default DTR/RTS** — see the warning in the
 User Guide) and look for:
 
 ```
-[pwr] Darkside PWR boot
+[pwr] Darkside PWR boot (reset: poweron)
 [pwr] backlight 100%
 [pwr] wifi connecting to <ssid> (nvs)
 [pwr] wifi up 10.20.30.176, mdns ok
 [gx] venus.local -> 10.20.30.239
 [gx] connected 10.20.30.239:502
-[gx] soc=85% 13.40V +0.3A +4W ... poll=45ms
+[gx] soc=85% 13.40V +0.3A +4W ... mp=3 sh=30.0 r1=0 r2=0 chg=200 am=1 poll=45ms
 ```
 
 ## Troubleshooting
@@ -135,6 +135,8 @@ User Guide) and look for:
 
 ## Debug serial commands
 
-Type into the serial terminal: `S` dumps the current screen as a hex frame
+Type into the serial terminal: `S` screen dump as hex
 (`tools/capture_screenshot.py` turns it into a PNG — the screenshots in
-these guides were made that way), `U` opens the setup screen.
+these guides were made that way), `U` setup screen, `C` control page,
+`B` chirps, `V` vebus unit sweep, `K` setup + keyboard, `D` arm the OFF
+confirm, `M` memory watermarks. Full list in the User Guide.
