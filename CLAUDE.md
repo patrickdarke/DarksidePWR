@@ -252,7 +252,7 @@ second. Telemetry gained mp/sh/r1/r2/chg/am fields. Serial 'V' sweeps units
 
 Setup screen (ui_setup.cpp): async Wi-Fi scan (strongest-first, deduped, top
 12) into a tappable list; SSID + password + GX-target textareas (password
-mode on; GX field takes an mDNS host or IP, cleared = secrets.h default,
+mode on; GX field takes an mDNS host or IP, cleared = config.h default,
 custom hosts do NOT fall back to the pinned IP) with the LVGL keyboard
 (480x152 at y168 — 36 px input rows keep all three fields visible above it,
 keys stay finger-sized); UNITS °F/°C
