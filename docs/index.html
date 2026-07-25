@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Darkside PWR — Web Flasher</title>
+<style>
+  :root {
+    --bg: #0c1018; --tile: #111826; --ring: #1d2634;
+    --text: #e8f0fa; --muted: #8c96aa; --teal: #46c8a5; --amber: #ffc85a;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 16px/1.6 -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  main { max-width: 720px; margin: 0 auto; padding: 40px 20px 80px; }
+  h1 { font-size: 1.5rem; letter-spacing: .08em; }
+  h1 span { color: var(--teal); }
+  h2 { font-size: 1.05rem; letter-spacing: .05em; color: var(--muted); margin-top: 2.2em; }
+  p, li { color: var(--text); }
+  .muted { color: var(--muted); }
+  .card {
+    background: var(--tile); border-radius: 12px; padding: 20px 24px; margin: 20px 0;
+  }
+  .card.warn { border-left: 3px solid var(--amber); }
+  img.shot { width: 100%; border-radius: 12px; margin: 14px 0; }
+  code { background: var(--ring); border-radius: 5px; padding: 1px 6px; font-size: .9em; }
+  a { color: var(--teal); }
+  esp-web-install-button::part(button) {
+    background: var(--teal); color: var(--bg); border-radius: 8px;
+    padding: 12px 26px; font-size: 1.05rem; font-weight: 600; border: none;
+  }
+  ol li { margin: .4em 0; }
+</style>
+</head>
+<body>
+<main>
+  <h1>DARKSIDE <span>PWR</span> — web flasher</h1>
+  <p class="muted">
+    A Victron GX power monitor for the ELECROW CrowPanel Advance 3.5&quot;
+    (ESP32-S3, 480&times;320 touch). Local Modbus TCP — no cloud, no keys.
+    Flash it straight from this page, then set everything up on the
+    touchscreen.
+  </p>
+
+  <img class="shot" src="img/main-screen.png" alt="Power screen">
+
+  <div class="card">
+    <p><strong>Flash the latest firmware</strong> — plug the panel into this
+    computer with a data USB-C cable, then:</p>
+    <esp-web-install-button manifest="manifest.json"></esp-web-install-button>
+    <p class="muted" style="margin-bottom:0">
+      Needs Chrome or Edge on desktop (Web Serial). Pick the
+      <code>usbmodem</code> / <code>ttyACM</code> port when prompted.
+    </p>
+  </div>
+
+  <div class="card warn">
+    <p style="margin:0"><strong>Panel still on factory firmware?</strong>
+    If connecting fails, hold <code>BOOT</code>, tap <code>RST</code>,
+    release <code>BOOT</code>, and try again — the factory image blocks the
+    automatic bootloader entry once. After the first flash it just works.</p>
+  </div>
+
+  <h2>AFTER FLASHING</h2>
+  <ol>
+    <li>The panel boots to the power screen and says
+      <em>tap the gear to set up</em>.</li>
+    <li>Gear &rarr; pick your Wi-Fi &rarr; type the password on-screen
+      &rarr; SAVE.</li>
+    <li>On your GX: Settings &rarr; Integrations &rarr;
+      <strong>Modbus TCP Server = Enabled</strong>. If it isn't
+      <code>venus.local</code>, type its IP in the GX ADDRESS field.</li>
+    <li>Battery, solar, AC, and the CONTROL page work immediately on any
+      Victron system.</li>
+  </ol>
+
+  <div class="card">
+    <p style="margin:0"><strong>Heads up:</strong> this stock image ships
+    with the reference installation's sensor list (three temperature
+    sensors, three LPG tanks, and its MultiPlus/solar unit ids). Rows that
+    don't match your system simply show <code>--</code>. To name your own
+    sensors and map your own devices, do a quick local build — the
+    <a href="https://github.com/patrickdarke/DarksidePWR/blob/main/SETUP.md">
+    Setup Guide</a> walks through it, including the on-device
+    <code>V</code> sweep that discovers your unit ids.</p>
+  </div>
+
+  <h2>MORE</h2>
+  <p>
+    <a href="https://github.com/patrickdarke/DarksidePWR">Source (MIT)</a> ·
+    <a href="https://github.com/patrickdarke/DarksidePWR/blob/main/USERGUIDE.md">User Guide</a> ·
+    <a href="https://github.com/patrickdarke/DarksidePWR/blob/main/SETUP.md">Setup Guide</a>
+  </p>
+</main>
+<script type="module" src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js?module"></script>
+</body>
+</html>

@@ -1,0 +1,11 @@
+{
+  "name": "Darkside PWR",
+  "version": "main",
+  "new_install_prompt_erase": true,
+  "builds": [
+    {
+      "chipFamily": "ESP32-S3",
+      "parts": [{ "path": "firmware/darksidepwr.bin", "offset": 0 }]
+    }
+  ]
+}
