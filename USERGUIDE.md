@@ -113,6 +113,9 @@ Victron system over the same local Modbus connection:
 - **ALTERNATOR** — Orion XS on/off (works on Venus 3.75, verified live).
   On older GX firmware lacking the register, the row says so and stays
   inert.
+- **SOLAR** — SmartSolar MPPT charger on/off. Note: on a DVCC/BMS-managed
+  system the charger is under external control, so the GX may override the
+  setting — the read-back highlight shows whether it stuck.
 
 Every control shows the **GX's own reported state**, refreshed every
 second — not what was last tapped. If a write is rejected or overridden,
@@ -132,6 +135,6 @@ Debug commands (type into the serial terminal): `S` dumps a screenshot of
 the current screen as hex (decode with `tools/capture_screenshot.py`),
 `U` opens the setup screen, `C` opens the control page, `B` plays the
 charge-complete chirps, `V` sweeps Modbus unit ids to find your MultiPlus
-(`GX_VEBUS_UNIT`) on a new installation, `K` opens setup with the keyboard
+and solar charger units (`GX_VEBUS_UNIT`/`GX_SOLAR_UNIT`), `K` opens setup with the keyboard
 up and `D` arms the MULTI OFF confirm (both exist for capturing the
 screenshots in these guides), `M` prints memory watermarks.

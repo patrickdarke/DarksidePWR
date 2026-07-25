@@ -93,7 +93,7 @@ partition table keeps the nvs partition); `esptool erase-flash` clears it.
 - Debug serial commands (handled in loop()): `S` = screen dump as hex
   RGB565 (decode: `tools/capture_screenshot.py out.png`, pre-cmd args like
   `K 1.5` open a screen first), `U` = setup screen, `C` = control page,
-  `B` = chirps, `V` = vebus unit sweep, `K` = setup + keyboard up, `D` =
+  `B` = chirps, `V` = unit sweep (solar + vebus), `K` = setup + keyboard up, `D` =
   arm the MULTI OFF confirm (real first-tap path, never confirms), `M` = heap/PSRAM
   watermarks (LV_MEM_CUSTOM=1: heap-free IS the LVGL watermark).
   Screenshots in docs/img were made this way — regenerate on UI changes and
@@ -239,16 +239,18 @@ CONTROL page (ui_control.cpp, bolt chip on the main screen; serial 'C'):
 MultiPlus mode segmented buttons (OFF needs a second confirming tap — it
 kills AC loads), shore-limit stepper (5 A steps, 5-50), GX relay toggles,
 DVCC charge-limit stepper (10 A steps, 10-100 then NO LIMIT), alternator
-ON/OFF (hidden as "needs newer GX firmware" when reg 4119 answers
-exception). WRITE LAW: writes queue via gxWrite() to the poller task (FC6,
+ON/OFF (noted "needs newer GX firmware" when reg 4119 answers exception),
+solar ON/OFF (SmartSolar /Mode reg 774 on GX_SOLAR_UNIT; ext-control may
+override — read-back shows truth). Six rows, 44 px pitch, 36 px chips. WRITE LAW: writes queue via gxWrite() to the poller task (FC6,
 same framing/tri-state as reads; never touch the socket from the UI), the
 task logs "[ctl] write ..." and immediately re-polls (queued commands
 EXPIRE after 10 s — a tap during an outage must not fire on reconnect),
 and every widget
 highlights GX READ-BACK state — a rejected or overridden write (DMC/BMS can
 own the shore limit; ext-control solar ignores /Mode) shows itself within a
-second. Telemetry gained mp/sh/r1/r2/chg/am fields. Serial 'V' sweeps units
-200-247 for vebus /Mode to find GX_VEBUS_UNIT on a new install.
+second. Telemetry: mp/sh/r1/r2/chg/sm/am fields. Serial 'V' sweeps units
+1-247 for solarcharger /Mode (774) and 200-247 for vebus /Mode (33) to
+find GX_SOLAR_UNIT / GX_VEBUS_UNIT on a new install.
 
 Setup screen (ui_setup.cpp): async Wi-Fi scan (strongest-first, deduped, top
 12) into a tappable list; SSID + password + GX-target textareas (password

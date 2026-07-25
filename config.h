@@ -23,6 +23,15 @@
 #define GX_ALT_UNIT 239
 #endif
 
+// SmartSolar MPPT (com.victronenergy.solarcharger) — discover with the
+// serial 'V' sweep; VE.Can devices reach Modbus through the static
+// unit-id mapping, so the unit is NOT the VRM instance number. 0 = no
+// solar on/off control (row shows muted). 1 on this system (found by
+// sweep; the VE.Can MPPT answers there).
+#ifndef GX_SOLAR_UNIT
+#define GX_SOLAR_UNIT 1
+#endif
+
 // MultiPlus (com.victronenergy.vebus) — discover with the serial 'V' sweep.
 #ifndef GX_VEBUS_UNIT
 #define GX_VEBUS_UNIT 229

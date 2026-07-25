@@ -300,6 +300,7 @@ void loop() {
       telKV(tel, off, sizeof tel, "r1", s_gx.relayOk, s_gx.relayClosed[0] ? 1 : 0);
       telKV(tel, off, sizeof tel, "r2", s_gx.relayOk, s_gx.relayClosed[1] ? 1 : 0);
       telKV(tel, off, sizeof tel, "chg", s_gx.dvccOk, s_gx.dvccLimA);
+      telKV(tel, off, sizeof tel, "sm", s_gx.solarModeOk, s_gx.solarMode);
       telKV(tel, off, sizeof tel, "am", s_gx.altModeOk, s_gx.altMode);
       if (off < (int)sizeof tel)
         snprintf(tel + off, sizeof tel - off, " poll=%lums", (unsigned long)pollMs);

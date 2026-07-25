@@ -180,6 +180,16 @@ bool pollOnce(GxData& out) {
   out.dvccOk = (r == kRegOk);
   if (out.dvccOk) out.dvccLimA = s16(cv[0]);
 
+  // SmartSolar /Mode — a unit of 0 means "not configured" (compile-time
+  // constant, the branch folds away). An ext-control MPPT may accept the
+  // read but bounce writes; read-back truth shows that on the page.
+  if (GX_SOLAR_UNIT != 0) {
+    r = sockOk ? mbRead(GX_SOLAR_UNIT, 774, 1, cv) : kRegFault;
+    if (r == kRegFault) sockOk = false;
+    out.solarModeOk = (r == kRegOk);
+    if (out.solarModeOk) out.solarMode = cv[0];
+  }
+
   // Orion /Mode (4119) only exists on newer GX firmware — one clean
   // exception per connection marks it unsupported until reconnect.
   if (s_altModeSupported && sockOk) {
@@ -232,17 +242,28 @@ bool pollOnce(GxData& out) {
 }
 
 void runSweep() {
-  Serial.println("[sweep] units 200-247, vebus /Mode (reg 33)...");
+  Serial.println("[sweep] units 1-247: solar /Mode (774); 200-247 also: vebus /Mode (33)...");
   uint16_t v[1];
-  for (int u = 200; u <= 247; u++) {
-    const RegResult r = mbRead((uint8_t)u, 33, 1, v);
-    if (r == kRegOk && v[0] >= 1 && v[0] <= 4)
-      Serial.printf("[sweep] unit %d: /Mode=%u  <-- vebus candidate\n", u, v[0]);
+  for (int u = 1; u <= 247; u++) {
+    RegResult r = mbRead((uint8_t)u, 774, 1, v);
+    if (r == kRegOk && (v[0] == 1 || v[0] == 4))
+      Serial.printf("[sweep] unit %d: solar /Mode=%u  <-- solarcharger candidate\n", u, v[0]);
     else if (r == kRegFault) {
       Serial.println("[sweep] aborted: socket fault");
       mbStop();
       s_nextAttemptMs = millis();
       return;
+    }
+    if (u >= 200) {
+      r = mbRead((uint8_t)u, 33, 1, v);
+      if (r == kRegOk && v[0] >= 1 && v[0] <= 4)
+        Serial.printf("[sweep] unit %d: /Mode=%u  <-- vebus candidate\n", u, v[0]);
+      else if (r == kRegFault) {
+        Serial.println("[sweep] aborted: socket fault");
+        mbStop();
+        s_nextAttemptMs = millis();
+        return;
+      }
     }
   }
   Serial.println("[sweep] done");
