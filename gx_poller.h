@@ -61,6 +61,8 @@ struct GxData {
   bool relayOk = false;
   int dvccLimA = 0;        // DVCC max charge current, -1 = no limit
   bool dvccOk = false;
+  int solarMode = 0;       // SmartSolar /Mode: 1 on, 4 off
+  bool solarModeOk = false;  // stays false when GX_SOLAR_UNIT is 0
   int altMode = 0;         // Orion XS /Mode: 1 on, 4 off (newer firmware)
   bool altModeOk = false;  // this round's read answered
   bool altModeSupported = true;  // false only after a clean exception —

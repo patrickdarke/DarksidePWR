@@ -30,9 +30,10 @@ list (e.g. "Temperature sensor [22]" → unit 22). You need:
 - **Alternator** (Orion XS): one unit id (`GX_ALT_UNIT`).
 - **Temperature sensors**: one per sensor (`GX_TEMP_UNITS`).
 - **Tank senders**: one per tank (`GX_TANK_UNITS`).
-- **MultiPlus** (`GX_VEBUS_UNIT`): once flashed, just type `V` into the
-  serial port — the firmware sweeps units 200–247 and prints the vebus
-  candidates.
+- **MultiPlus** (`GX_VEBUS_UNIT`) and **solar charger** (`GX_SOLAR_UNIT`):
+  once flashed, just type `V` into the serial port — the firmware sweeps
+  the unit range and prints vebus and solarcharger candidates (VE.Can
+  devices sit behind a static unit mapping, so guessing doesn't work).
 
 If in doubt, sweep: read a service-specific register (3304 for temps, 3004
 for tanks, 4100 for the alternator) against units 1–247 and see which
@@ -68,6 +69,7 @@ part worth getting right:
 | `GX_MDNS_HOST` / `GX_FALLBACK_IP` | Where the GX lives | Defaults usually fine |
 | `GX_ALT_UNIT` | Orion XS unit id | For the alternator reading |
 | `GX_VEBUS_UNIT` | MultiPlus unit id | For the CONTROL page (serial `V` finds it) |
+| `GX_SOLAR_UNIT` | Solar charger unit id | Solar on/off row (`V` finds it; 0 = hide) |
 | `GX_TEMP_UNITS` / `GX_TEMP_LABELS` | Temp sensor units + display names | Yes, match lengths |
 | `GX_TANK_UNITS` / `GX_TANK_LABELS` | Tank units + display names | Yes, match lengths |
 | `TEMPS_IN_F` | 1 = °F, 0 = °C default | Toggleable on-device |
@@ -138,5 +140,5 @@ User Guide) and look for:
 Type into the serial terminal: `S` screen dump as hex
 (`tools/capture_screenshot.py` turns it into a PNG — the screenshots in
 these guides were made that way), `U` setup screen, `C` control page,
-`B` chirps, `V` vebus unit sweep, `K` setup + keyboard, `D` arm the OFF
+`B` chirps, `V` unit sweep (solar + vebus), `K` setup + keyboard, `D` arm the OFF
 confirm, `M` memory watermarks. Full list in the User Guide.

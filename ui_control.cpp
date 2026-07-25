@@ -19,6 +19,7 @@ lv_obj_t* s_shoreVal = nullptr;
 lv_obj_t* s_relayBtn[2] = {nullptr};
 lv_obj_t* s_dvccVal = nullptr;
 lv_obj_t* s_altBtn[2] = {nullptr};       // ON / OFF
+lv_obj_t* s_solarBtn[2] = {nullptr};     // ON / OFF
 lv_obj_t* s_altNa = nullptr;
 lv_obj_t* s_hint = nullptr;
 lv_timer_t* s_offTimer = nullptr;        // disarms the OFF confirm
@@ -109,6 +110,12 @@ void dvccCb(lv_event_t* e) {
   sendCmd(100, 2705, (uint16_t)(int16_t)a);
 }
 
+void solarCb(lv_event_t* e) {
+  if (GX_SOLAR_UNIT == 0 || !s_last.solarModeOk) return;
+  const int on = (int)(uintptr_t)lv_event_get_user_data(e);
+  sendCmd(GX_SOLAR_UNIT, 774, on ? 1 : 4);
+}
+
 void altCb(lv_event_t* e) {
   if (!s_last.altModeOk) return;
   const int on = (int)(uintptr_t)lv_event_get_user_data(e);
@@ -162,40 +169,45 @@ void uiCtlBuild() {
   lv_obj_t* close = mkChip(368, 6, 96, 30, LV_SYMBOL_CLOSE "  CLOSE", closeCb, 0);
   lv_obj_set_style_bg_color(close, lv_color_hex(kRing), 0);
 
-  mkRowLabel(56, "MULTI");
+  // Six rows at a 44 px pitch, 36 px chips (compressed when SOLAR joined).
+  mkRowLabel(52, "MULTI");
   for (int i = 0; i < 4; i++)
-    s_mpBtn[i] = mkChip(136 + i * 86, 44, 78, 40, kMpLabels[i], mpCb, i);
+    s_mpBtn[i] = mkChip(136 + i * 86, 40, 78, 36, kMpLabels[i], mpCb, i);
 
-  mkRowLabel(104, "SHORE A");
-  mkChip(136, 92, 56, 40, LV_SYMBOL_MINUS, shoreCb, -1);
-  s_shoreVal = mkValLabel(200, 102, 96);
-  mkChip(304, 92, 56, 40, LV_SYMBOL_PLUS, shoreCb, +1);
+  mkRowLabel(96, "SHORE A");
+  mkChip(136, 84, 56, 36, LV_SYMBOL_MINUS, shoreCb, -1);
+  s_shoreVal = mkValLabel(200, 92, 96);
+  mkChip(304, 84, 56, 36, LV_SYMBOL_PLUS, shoreCb, +1);
 
-  mkRowLabel(152, "RELAYS");
-  s_relayBtn[0] = mkChip(136, 140, 150, 40, "R1  --", relayCb, 0);
-  s_relayBtn[1] = mkChip(296, 140, 150, 40, "R2  --", relayCb, 1);
+  mkRowLabel(140, "RELAYS");
+  s_relayBtn[0] = mkChip(136, 128, 150, 36, "R1  --", relayCb, 0);
+  s_relayBtn[1] = mkChip(296, 128, 150, 36, "R2  --", relayCb, 1);
 
-  mkRowLabel(200, "CHG LIMIT");
-  mkChip(136, 188, 56, 40, LV_SYMBOL_MINUS, dvccCb, -1);
-  s_dvccVal = mkValLabel(200, 198, 120);
-  mkChip(328, 188, 56, 40, LV_SYMBOL_PLUS, dvccCb, +1);
+  mkRowLabel(184, "CHG LIMIT");
+  mkChip(136, 172, 56, 36, LV_SYMBOL_MINUS, dvccCb, -1);
+  s_dvccVal = mkValLabel(200, 180, 120);
+  mkChip(328, 172, 56, 36, LV_SYMBOL_PLUS, dvccCb, +1);
 
-  mkRowLabel(248, "ALTERNATOR");
-  s_altBtn[0] = mkChip(136, 236, 90, 40, "ON", altCb, 1);
-  s_altBtn[1] = mkChip(234, 236, 90, 40, "OFF", altCb, 0);
+  mkRowLabel(228, "ALTERNATOR");
+  s_altBtn[0] = mkChip(136, 216, 90, 36, "ON", altCb, 1);
+  s_altBtn[1] = mkChip(234, 216, 90, 36, "OFF", altCb, 0);
   s_altNa = lv_label_create(s_scr);
   lv_obj_set_style_text_font(s_altNa, &lv_font_montserrat_12, 0);
   lv_obj_set_style_text_color(s_altNa, lv_color_hex(kMuted), 0);
   lv_label_set_text(s_altNa, "needs newer\nGX firmware");
   lv_obj_set_width(s_altNa, 126);
-  lv_obj_set_pos(s_altNa, 338, 242);
+  lv_obj_set_pos(s_altNa, 338, 220);
   lv_obj_add_flag(s_altNa, LV_OBJ_FLAG_HIDDEN);
+
+  mkRowLabel(272, "SOLAR");
+  s_solarBtn[0] = mkChip(136, 260, 90, 36, "ON", solarCb, 1);
+  s_solarBtn[1] = mkChip(234, 260, 90, 36, "OFF", solarCb, 0);
 
   s_hint = lv_label_create(s_scr);
   lv_obj_set_style_text_font(s_hint, &lv_font_montserrat_12, 0);
   lv_obj_set_style_text_color(s_hint, lv_color_hex(kMuted), 0);
   lv_label_set_text(s_hint, "states show GX read-back   OFF asks twice");
-  lv_obj_set_pos(s_hint, 16, 294);
+  lv_obj_set_pos(s_hint, 16, 302);
 
   s_offTimer = lv_timer_create(offTimerCb, 3000, nullptr);
   lv_timer_pause(s_offTimer);
@@ -252,6 +264,14 @@ void uiCtlUpdate(const GxData& d) {
     }
   } else {
     lv_label_set_text(s_dvccVal, "--");
+  }
+
+  if (d.solarModeOk) {
+    styleChip(s_solarBtn[0], d.solarMode == 1, true);
+    styleChip(s_solarBtn[1], d.solarMode == 4, true);
+  } else {
+    styleChip(s_solarBtn[0], false, false);
+    styleChip(s_solarBtn[1], false, false);
   }
 
   if (d.altModeOk) {
