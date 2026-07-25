@@ -31,6 +31,8 @@ constexpr const char* kMpLabels[4] = {"OFF", "CHG", "INV", "ON"};
 GxData s_last;            // latest sample (for +/- math and highlights)
 bool s_offArmed = false;  // MULTI OFF confirm state
 
+constexpr char kDefaultHint[] = "states show GX read-back   OFF asks twice";
+
 void setHint(const char* txt) { lv_label_set_text(s_hint, txt); }
 
 // Queue a write and surface the result — a full queue (e.g. tapping away
@@ -206,7 +208,7 @@ void uiCtlBuild() {
   s_hint = lv_label_create(s_scr);
   lv_obj_set_style_text_font(s_hint, &lv_font_montserrat_12, 0);
   lv_obj_set_style_text_color(s_hint, lv_color_hex(kMuted), 0);
-  lv_label_set_text(s_hint, "states show GX read-back   OFF asks twice");
+  lv_label_set_text(s_hint, kDefaultHint);
   lv_obj_set_pos(s_hint, 16, 302);
 
   s_offTimer = lv_timer_create(offTimerCb, 3000, nullptr);
@@ -216,6 +218,7 @@ void uiCtlBuild() {
 void uiCtlOpen() {
   s_prevScr = lv_scr_act();
   disarmOff();
+  setHint(kDefaultHint);  // don't show a stale "sent..." from last visit
   lv_scr_load(s_scr);
 }
 
