@@ -18,7 +18,7 @@ arduino-cli core install esp32:esp32@3.3.10     # PINNED — see "Toolchain" bel
 gh auth login                                   # repo is private
 git clone https://github.com/patrickdarke/DarksidePWR
 cd DarksidePWR
-cp secrets.h.example secrets.h                  # then fill in Wi-Fi SSID/pass
+cp secrets.h.example secrets.h                  # Wi-Fi creds only; config.h has the rest
 ./build.sh                                      # compile
 ./build.sh flash                                # compile + flash attached panel
 ```
@@ -188,10 +188,16 @@ alternator, 3004 for tanks).
   alternator), never stale numbers, never a failed poll. A month-dead Mopeka
   ("Elijah Craig") drops off D-Bus entirely — its unit stops answering; this
   is normal and self-heals when the sensor returns.
-- `readRegs` parses the MBAP length before the body so Modbus exceptions are
-  consumed cleanly (no socket desync, no 500 ms stall). It returns a
-  three-way result: ok / no-answer (clean exception, socket fine) / FAULT
-  (timeout, framing, or TID mismatch — bytes may still be in flight).
+- `mbRead`/`mbWrite` (modbus_transport.cpp) parse the MBAP length before the
+  body so Modbus exceptions are consumed cleanly (no socket desync, no
+  500 ms stall). They return a three-way result: ok / kRegException (clean
+  exception, socket fine) / kRegFault (timeout, framing, or TID mismatch —
+  bytes may still be in flight).
+- MODULE MAP since the review refactor: modbus_transport = socket+framing
+  only; gx_poller = register map, GxData, the core-0 task, write queue,
+  sweep; gx_settings = NVS runtime settings (own mutex, pending-target
+  handoff); config.h = committed non-secret defaults (#ifndef-guarded so
+  secrets.h can override any of them); secrets.h = Wi-Fi credentials only.
 - A FAULT during the sensor reads skips the remaining sensors for that poll
   (each would stall toward its 500 ms deadline on a desynced stream) and
   cycles the socket with NO backoff — the GX just answered the system reads,

@@ -5,18 +5,14 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "secrets.h"  // GX_TEMP_LABELS for the temps line
 #include "ui_control.h"
 #include "ui_setup.h"
 #include "ui_theme.h"
+#include "ui_widgets.h"
 
-// Header title: UI_TITLE from secrets.h wins; when it's "" the GX system
-// name (VRM installation name) is shown as soon as a poll delivers it.
-// The #ifndef keeps older secrets.h files (no UI_TITLE) compiling — they
-// get auto mode.
-#ifndef UI_TITLE
-#define UI_TITLE ""
-#endif
+// Sensor labels and UI_TITLE come from config.h (secrets.h may override),
+// included via ui.h -> gx_poller.h. Title rule: UI_TITLE wins; "" = show
+// the GX system name as soon as a poll delivers it.
 
 // Darkside PWR — 480x320 power screen in the DSODash design language:
 // SOC arc on the left, four metric tiles on the right, totals bar below,
@@ -151,29 +147,19 @@ void uiBuild() {
   lv_obj_set_pos(s_footLbl, 16, 298);
 
   // Chip buttons, lower right (footer text lines end well left of them):
-  // bolt -> CONTROL page, gear -> setup screen.
+  // bolt -> CONTROL page, gear -> setup screen. Radius 8 marks them as
+  // quiet corner affordances.
   struct Chip { int x; const char* sym; void (*open)(); };
   static const Chip kChips[] = {
       {384, LV_SYMBOL_CHARGE, uiCtlOpen},
       {432, LV_SYMBOL_SETTINGS, uiSetupOpen},
   };
   for (const Chip& c : kChips) {
-    lv_obj_t* b = lv_btn_create(scr);
-    lv_obj_remove_style_all(b);
-    lv_obj_set_style_bg_color(b, lv_color_hex(kTile), 0);
-    lv_obj_set_style_bg_opa(b, LV_OPA_COVER, 0);
-    lv_obj_set_style_bg_color(b, lv_color_hex(kRing), LV_STATE_PRESSED);
+    lv_obj_t* b = uiwButton(
+        scr, c.x, 280, 40, 32, c.sym, kTile, kMuted,
+        [](lv_event_t* e) { ((void (*)())lv_event_get_user_data(e))(); },
+        (void*)c.open);
     lv_obj_set_style_radius(b, 8, 0);
-    lv_obj_set_size(b, 40, 32);
-    lv_obj_set_pos(b, c.x, 280);
-    lv_obj_add_event_cb(
-        b, [](lv_event_t* e) { ((void (*)())lv_event_get_user_data(e))(); },
-        LV_EVENT_CLICKED, (void*)c.open);
-    lv_obj_t* l = lv_label_create(b);
-    lv_obj_set_style_text_font(l, &lv_font_montserrat_14, 0);
-    lv_obj_set_style_text_color(l, lv_color_hex(kMuted), 0);
-    lv_label_set_text(l, c.sym);
-    lv_obj_center(l);
   }
 }
 

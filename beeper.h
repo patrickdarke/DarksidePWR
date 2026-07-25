@@ -7,4 +7,4 @@
 // I2S speaker path is deprecated for alerts — pins remain documented in
 // CLAUDE.md if music/voice output is ever wanted.
 void beeperInit();   // attach LEDC (silent); park the NS4168 CTRL pin
-void beeperChime();  // double chirp — "charge complete" (no-op if playing)
+void beeperChirp();  // double chirp — "charge complete" (no-op if playing)
