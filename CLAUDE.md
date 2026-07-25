@@ -174,7 +174,8 @@ alternator, 3004 for tanks).
 | GX_VEBUS_UNIT | vebus | 22 W | /Ac/ActiveIn/CurrentLimit (shore limit) | ÷10 A |
 | 100 | system | 806/807 W | GX relay 0/1 state (0 open, 1 closed; relay function must be Manual) | 1 |
 | 100 | settings | 2705 W | DVCC max charge current, -1 = no limit | A |
-| 239 | alternator | 4119 W | Orion /Mode 1 on / 4 off — same firmware vintage as 5700, expect exception 2 on ≤3.75 (probed once per connection) | 1 |
+| 239 | alternator | 4119 W | Orion /Mode 1 on / 4 off — WORKS on v3.75 (verified live 2026-07-24, unlike 5700); still probed once per connection for older firmware | 1 |
+| 1 | solarcharger (VE.Can MPPT) | 774 W | /Mode 1 on / 4 off. VE.Can instances are >247 and reachable ONLY via the static unitid2di map — unit 1 on this system, found by the 'V' sweep; never assume unit = VRM instance for VE.Can devices. Ext-control (DVCC) may override writes — read-back shows truth | 1 |
 
 ### Reliability laws
 
