@@ -94,7 +94,8 @@ partition table keeps the nvs partition); `esptool erase-flash` clears it.
   RGB565 (decode: `tools/capture_screenshot.py out.png`, pre-cmd args like
   `K 1.5` open a screen first), `U` = setup screen, `C` = control page,
   `B` = chirps, `V` = vebus unit sweep, `K` = setup + keyboard up, `D` =
-  arm the MULTI OFF confirm (real first-tap path, never confirms).
+  arm the MULTI OFF confirm (real first-tap path, never confirms), `M` = heap/PSRAM
+  watermarks (LV_MEM_CUSTOM=1: heap-free IS the LVGL watermark).
   Screenshots in docs/img were made this way — regenerate on UI changes and
   keep USERGUIDE.md / SETUP.md in sync.
 - LAYOUT POLICY (owner decision 2026-07-24): screens use absolute pixel
@@ -211,7 +212,8 @@ alternator, 3004 for tanks).
   skipped sensors show `--` for that one poll. Telemetry signature:
   `[gx] sensor read fault, cycling connection`.
 
-## UI map (ui.cpp + ui_setup.cpp, palette in ui_theme.h)
+## UI map (ui.cpp / ui_setup.cpp / ui_control.cpp; palette ui_theme.h,
+shared button factory ui_widgets.h)
 
 SOC arc (teal) + big % + CHARGING/DISCHARGING/IDLE · tiles: HOUSE V /
 CURRENT A (amber) / POWER IN W (green, = PV + alternator) / AC LOADS W
@@ -219,12 +221,13 @@ CURRENT A (amber) / POWER IN W (green, = PV + alternator) / AC LOADS W
 line (red below `kTankLowPct = 20`%), power line (PV · ALT · DC · NET), gear
 button (432,280) → setup screen. Link dot: red = no Wi-Fi, amber = Wi-Fi but
 no GX, green = live (10 s staleness window). Sensor unit-ids/labels/°F-°C
-are config in `secrets.h`; sensor COUNTS derive from the GX_*_UNITS list
+are config in `config.h` (secrets.h may override); sensor COUNTS derive
+from the GX_*_UNITS list
 lengths (ui.cpp static_asserts the label lists match; footer fits ~3 per
 line). Threshold in `ui.cpp`.
 
-Header title: `UI_TITLE` in secrets.h wins; `""` (or a secrets.h from before
-the define existed — #ifndef fallback) = auto-pull the GX system name (VRM
+Header title: `UI_TITLE` in config.h wins (secrets.h may override it);
+`""` = auto-pull the GX system name (VRM
 installation name, reg 5700, uppercased; "PWR MONITOR" until it arrives).
 Auto-pull cannot work on ANY current GX: reg 5700 is in no released
 firmware (v3.75 is the latest and answers exception 2 — the panel logs this
@@ -239,7 +242,9 @@ DVCC charge-limit stepper (10 A steps, 10-100 then NO LIMIT), alternator
 ON/OFF (hidden as "needs newer GX firmware" when reg 4119 answers
 exception). WRITE LAW: writes queue via gxWrite() to the poller task (FC6,
 same framing/tri-state as reads; never touch the socket from the UI), the
-task logs "[ctl] write ..." and immediately re-polls, and every widget
+task logs "[ctl] write ..." and immediately re-polls (queued commands
+EXPIRE after 10 s — a tap during an outage must not fire on reconnect),
+and every widget
 highlights GX READ-BACK state — a rejected or overridden write (DMC/BMS can
 own the shore limit; ext-control solar ignores /Mode) shows itself within a
 second. Telemetry gained mp/sh/r1/r2/chg/am fields. Serial 'V' sweeps units
@@ -256,8 +261,8 @@ either); brightness slider; status line lives in the header. SAVE applies
 only fields that differ from their open-time prefills — notably Wi-Fi is
 untouched unless the SSID changed or a password was typed, so saving other
 settings can NEVER wipe a stored password. NVS keys (namespace `darkside`):
-wifi.ssid, wifi.pass, bright, gx.addr, tempF — secrets.h supplies every
-first-boot default.
+wifi.ssid, wifi.pass, bright, gx.addr, tempF — config.h supplies every
+first-boot default (secrets.h only Wi-Fi + optional overrides).
 SCAN LAW (cost a live debug): esp_wifi_scan_start FAILS while a join attempt
 is in flight, and a bad SSID keeps the radio in a join-retry loop — so
 startScan aborts a non-connected join first, boot never joins placeholder

@@ -30,23 +30,23 @@ registers verified live against the Darkside.Overland Ekrano (2026-07-24):
 
 The Orion XS alternator, temperature sensors, and tank senders are read as
 separate per-device units, non-fatally (a napping sensor shows `--`). Unit
-ids, labels, list lengths, and °F/°C (`TEMPS_IN_F`) are all `secrets.h`
-config — any temperature/tank service the GX knows works, Ruuvi and Mopeka
+ids, labels, list lengths, and °F/°C (`TEMPS_IN_F`) are all `config.h`
+settings — any temperature/tank service the GX knows works, Ruuvi and Mopeka
 are just what this truck runs. Full verified register map in `CLAUDE.md`.
 The header title auto-pulls the GX system name (VRM installation name,
-register 5700) unless `UI_TITLE` in `secrets.h` pins a fixed one.
+register 5700) unless `UI_TITLE` in `config.h` pins a fixed one.
 
 GX prerequisites (Settings → Integrations): **Modbus TCP Server = Enabled**.
 Addressing: `venus.local` via mDNS, falling back to the pinned IP in
-`secrets.h` (keep a DHCP reservation for the GX).
+`config.h` (keep a DHCP reservation for the GX).
 
 ## Building
 
 One-time: `cp secrets.h.example secrets.h`. Editing it is largely optional —
 the gear button (lower right) opens an on-device setup screen for Wi-Fi
 (scan, pick, type the password on-screen), the GX address, °F/°C, and
-brightness; everything saves to NVS and overrides the secrets.h defaults at
-boot.
+brightness; everything saves to NVS and overrides the config.h defaults at
+boot. secrets.h (gitignored) holds only Wi-Fi credentials.
 
 ```
 ./build.sh          # compile
