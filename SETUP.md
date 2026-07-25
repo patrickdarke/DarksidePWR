@@ -39,6 +39,12 @@ If in doubt, sweep: read a service-specific register (3304 for temps, 3004
 for tanks, 4100 for the alternator) against units 1–247 and see which
 answer. The full verified register map lives in `CLAUDE.md`.
 
+> **Shortcut:** you can skip sections 3–5 entirely by flashing the stock
+> image from the browser at
+> [patrickdarke.github.io/DarksidePWR](https://patrickdarke.github.io/DarksidePWR/)
+> — Wi-Fi and GX address are then set on the touchscreen. A local build is
+> only needed to customize sensor lists, labels, and unit ids.
+
 ## 3. Build machine setup (one-time)
 
 ```

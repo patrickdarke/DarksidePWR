@@ -8,6 +8,10 @@ network — no BLE keys, no cloud, works anywhere the truck is.
 ![Power screen](docs/img/main-screen.png)
 ![Control page](docs/img/control-screen.png)
 
+**Flash it from your browser — no toolchain:**
+[patrickdarke.github.io/DarksidePWR](https://patrickdarke.github.io/DarksidePWR/)
+(Chrome/Edge; provision Wi-Fi and the GX on the touchscreen afterwards).
+
 **Docs:** [Setup Guide](SETUP.md) (GX config → flash → provision) ·
 [User Guide](USERGUIDE.md) (every screen element, setup menu, control
 page, telemetry).
