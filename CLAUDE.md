@@ -25,9 +25,11 @@ cp secrets.h.example secrets.h                  # Wi-Fi creds only; config.h has
 
 `secrets.h` is gitignored — NEVER put real credentials in a tracked file
 (this repo's history was verified clean before first push; keep it that
-way). All GX addressing/unit-id config lives there; the committed
-`secrets.h.example` carries correct defaults for everything except the
-Wi-Fi credentials.
+way). Since the config split it holds ONLY Wi-Fi credentials; all GX
+addressing/unit-id/display config lives in the committed `config.h`
+(#ifndef-guarded, so secrets.h may override any define). The local
+secrets.h predates the split and still carries overrides — that's fine,
+they win over config.h by design.
 
 Wi-Fi credentials are best set ON DEVICE: gear button (lower right) → Wi-Fi
 setup screen (scan/pick/type). Saved to NVS namespace `darkside`, keys
