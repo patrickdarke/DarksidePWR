@@ -97,6 +97,10 @@ partition table keeps the nvs partition); `esptool erase-flash` clears it.
   arm the MULTI OFF confirm (real first-tap path, never confirms).
   Screenshots in docs/img were made this way — regenerate on UI changes and
   keep USERGUIDE.md / SETUP.md in sync.
+- LAYOUT POLICY (owner decision 2026-07-24): screens use absolute pixel
+  coordinates and STAY that way — do not convert to flex/grid or introduce
+  layout constants; the screens are hardware-verified as-is. Revisit only
+  if a second panel size ever becomes a target.
 - LVGL KEYBOARD LAW (cost an invisible-keyboard regression): lv_keyboard
   self-aligns BOTTOM_MID at creation, so lv_obj_set_pos() coordinates become
   OFFSETS from that anchor — the keyboard sat 16 px past the screen bottom
