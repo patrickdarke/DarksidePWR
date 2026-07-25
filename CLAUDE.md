@@ -175,7 +175,7 @@ alternator, 3004 for tanks).
 | 100 | system | 806/807 W | GX relay 0/1 state (0 open, 1 closed; relay function must be Manual) | 1 |
 | 100 | settings | 2705 W | DVCC max charge current, -1 = no limit | A |
 | 239 | alternator | 4119 W | Orion /Mode 1 on / 4 off — WORKS on v3.75 (verified live 2026-07-24, unlike 5700); still probed once per connection for older firmware | 1 |
-| 1 | solarcharger (VE.Can MPPT) | 774 W | /Mode 1 on / 4 off. VE.Can instances are >247 and reachable ONLY via the static unitid2di map — unit 1 on this system, found by the 'V' sweep; never assume unit = VRM instance for VE.Can devices. Ext-control (DVCC) may override writes — read-back shows truth | 1 |
+| 1 | solarcharger (VE.Can MPPT) | 774 W | /Mode 1 on / 4 off. VE.Can instances are >247 and reachable ONLY via the static unitid2di map — unit 1 on this system, found by the 'V' sweep; never assume unit = VRM instance for VE.Can devices. VERIFIED live 2026-07-24: /Mode writes STICK even with the MPPT under DVCC/ext control (off->on round trip by owner) | 1 |
 
 ### Reliability laws
 
