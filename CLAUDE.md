@@ -90,6 +90,13 @@ partition table keeps the nvs partition); `esptool erase-flash` clears it.
   temporarily restores 250 ms so frames arrive intact. If `[ui] max loop
   gap` ever spikes while a capture/monitor script is mid-setup, suspect the
   host, not the firmware.
+- WEB FLASHER: https://patrickdarke.github.io/DarksidePWR/ (GitHub Pages
+  from /docs; esp-web-tools + docs/manifest.json + the MERGED image
+  docs/firmware/darksidepwr.bin, gitignore-excepted). Rebuild the image
+  with tools/build_webflash.sh (builds NEUTRAL from secrets.h.example —
+  moves any local secrets.h aside untouched) and commit the new bin
+  whenever main changes user-visibly; the on-device setup screen is what
+  makes a stock image usable.
 - Debug serial commands (handled in loop()): `S` = screen dump as hex
   RGB565 (decode: `tools/capture_screenshot.py out.png`, pre-cmd args like
   `K 1.5` open a screen first), `U` = setup screen, `C` = control page,
