@@ -68,6 +68,7 @@ Mopeka LPG tanks line (red when low), PV/ALT/DC/NET footer, link dot — plus
 a touch setup screen (gear button: Wi-Fi scanner/picker, on-screen keyboard,
 credentials in NVS, brightness slider with PWM dimming), a CONTROL page
 (bolt button: MultiPlus mode + shore limit, GX relays, DVCC charge limit,
+solar charger on/off,
 alternator on/off — with read-back state and a confirm step on OFF), and a
 charge-complete chirp. Ideas next: sensor-detail second page
 (humidity/pressure, Orion detail), low-SOC alert.
