@@ -277,19 +277,26 @@ void loop() {
       // size themselves to the secrets.h lists (missing sensors: -99 / -1).
       char tel[288];
       int off = snprintf(tel, sizeof tel,
-                         "[gx] soc=%d%% %.2fV %+.1fA %+dW pv=%dW alt=%dW ac=%dW dc=%dW st=%d t=",
+                         "[gx] soc=%d%% %.2fV %+.1fA %+dW pv=%dW alt=%dW ac=%dW dc=%dW st=%d",
                          s_gx.soc, s_gx.battV, s_gx.battA, s_gx.battW,
                          s_gx.pvW, s_gx.altW, s_gx.acW, s_gx.dcW, s_gx.battState);
-      for (int i = 0; i < GxData::kNumTemps && off < (int)sizeof tel; i++)
-        off += snprintf(tel + off, sizeof tel - off, "%s%.1f",
-                        i ? "/" : "", s_gx.tempOk[i] ? s_gx.temp[i] : -99.0f);
-      if (off < (int)sizeof tel)
-        off += snprintf(tel + off, sizeof tel - off, "%s lpg=", gxTempsInF() ? "F" : "C");
-      for (int i = 0; i < GxData::kNumTanks && off < (int)sizeof tel; i++)
-        off += snprintf(tel + off, sizeof tel - off, "%s%.0f",
-                        i ? "/" : "", s_gx.tankOk[i] ? s_gx.tankPct[i] : -1.0f);
-      if (off < (int)sizeof tel)
-        off += snprintf(tel + off, sizeof tel - off, "%%");
+      // Sensor sections appear only when configured (counts can be zero).
+      if (GxData::kNumTemps > 0 && off < (int)sizeof tel) {
+        off += snprintf(tel + off, sizeof tel - off, " t=");
+        for (int i = 0; i < GxData::kNumTemps && off < (int)sizeof tel; i++)
+          off += snprintf(tel + off, sizeof tel - off, "%s%.1f",
+                          i ? "/" : "", s_gx.tempOk[i] ? s_gx.temp[i] : -99.0f);
+        if (off < (int)sizeof tel)
+          off += snprintf(tel + off, sizeof tel - off, "%s", gxTempsInF() ? "F" : "C");
+      }
+      if (GxData::kNumTanks > 0 && off < (int)sizeof tel) {
+        off += snprintf(tel + off, sizeof tel - off, " lpg=");
+        for (int i = 0; i < GxData::kNumTanks && off < (int)sizeof tel; i++)
+          off += snprintf(tel + off, sizeof tel - off, "%s%.0f",
+                          i ? "/" : "", s_gx.tankOk[i] ? s_gx.tankPct[i] : -1.0f);
+        if (off < (int)sizeof tel)
+          off += snprintf(tel + off, sizeof tel - off, "%%");
+      }
       // Controls read-back: MultiPlus mode, shore limit, relays, DVCC
       // charge limit, alternator mode ('-' = register didn't answer).
       telKV(tel, off, sizeof tel, "mp", s_gx.mpModeOk, s_gx.mpMode);

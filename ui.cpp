@@ -130,14 +130,14 @@ void uiBuild() {
   lv_obj_set_style_text_font(s_tempLbl, &lv_font_montserrat_14, 0);
   lv_obj_set_style_text_color(s_tempLbl, lv_color_hex(kMuted), 0);
   lv_label_set_recolor(s_tempLbl, true);
-  lv_label_set_text(s_tempLbl, "TEMPS --");
+  lv_label_set_text(s_tempLbl, GxData::kNumTemps ? "TEMPS --" : "");
   lv_obj_set_pos(s_tempLbl, 16, 254);
 
   s_tankLbl = lv_label_create(scr);
   lv_obj_set_style_text_font(s_tankLbl, &lv_font_montserrat_14, 0);
   lv_obj_set_style_text_color(s_tankLbl, lv_color_hex(kMuted), 0);
   lv_label_set_recolor(s_tankLbl, true);
-  lv_label_set_text(s_tankLbl, "LPG --");
+  lv_label_set_text(s_tankLbl, GxData::kNumTanks ? "LPG --" : "");
   lv_obj_set_pos(s_tankLbl, 16, 276);
 
   s_footLbl = lv_label_create(scr);

@@ -75,8 +75,10 @@ part worth getting right:
 | `TEMPS_IN_F` | 1 = °F, 0 = °C default | Toggleable on-device |
 | `UI_TITLE` | Fixed header title, `""` = auto | Optional |
 
-List lengths are free (three of each fits the footer nicely); the build
-fails with a clear message if a labels list doesn't match its units list.
+List lengths are free (three of each fits the footer nicely), and `{}`
+is valid — no tanks or temp sensors simply means those footer lines
+disappear. The build fails with a clear message if a labels list doesn't
+match its units list.
 
 ## 5. Build and flash
 
@@ -85,7 +87,9 @@ fails with a clear message if a labels list doesn't match its units list.
 ./build.sh flash    # compile + flash the attached panel
 ```
 
-The panel enumerates as `/dev/cu.usbmodem*` (native USB, no driver).
+The panel enumerates as `/dev/cu.usbmodem*` on macOS or `/dev/ttyACM*`
+on Linux (native USB, no driver; on Linux add yourself to the `dialout`
+or `uucp` group if you get permission errors).
 **First flash over the factory firmware:** the auto-reset fails ("No serial
 data received") — hold **BOOT**, tap **RST**, release BOOT, run
 `./build.sh flash` again. Every flash after that just works.

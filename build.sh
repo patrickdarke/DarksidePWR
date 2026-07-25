@@ -14,8 +14,9 @@ FQBN="esp32:esp32:esp32s3:FlashSize=16M,PSRAM=opi,CDCOnBoot=cdc,PartitionScheme=
 arduino-cli compile --fqbn "$FQBN" --libraries "$HERE/lib" "$HERE"
 
 if [ "${1:-}" = "flash" ]; then
-  PORT="$(ls /dev/cu.usbmodem* 2>/dev/null | head -1)"
-  [ -n "$PORT" ] || { echo "✗ no usbmodem port found"; exit 1; }
+  # macOS enumerates the panel as cu.usbmodem*, Linux as ttyACM*
+  PORT="$(ls /dev/cu.usbmodem* /dev/ttyACM* 2>/dev/null | head -1)"
+  [ -n "$PORT" ] || { echo "✗ no panel port found (cu.usbmodem*/ttyACM*)"; exit 1; }
   arduino-cli upload --fqbn "$FQBN" -p "$PORT" "$HERE"
   echo "==> flashed $PORT"
 fi

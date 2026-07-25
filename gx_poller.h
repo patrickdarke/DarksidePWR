@@ -37,14 +37,16 @@ struct GxData {
 
   // Temperature sensors (reg 3304 = degC x100), order per GX_TEMP_UNITS.
   static constexpr int kNumTemps = sizeof(kGxTempUnits) / sizeof(kGxTempUnits[0]);
-  float temp[kNumTemps] = {0};       // °F or °C per the units setting
-  bool tempOk[kNumTemps] = {false};
+  // Arrays pad to >=1 so an empty GX_TEMP_UNITS {} stays legal C++; loops
+  // run on kNumTemps, so the pad element is never touched.
+  float temp[kNumTemps ? kNumTemps : 1] = {0};  // °F or °C per units setting
+  bool tempOk[kNumTemps ? kNumTemps : 1] = {false};
 
   // Tank levels (reg 3004 = level% x10), order per GX_TANK_UNITS. A dead
   // sender falls off D-Bus entirely and reads not-ok ('--' on screen).
   static constexpr int kNumTanks = sizeof(kGxTankUnits) / sizeof(kGxTankUnits[0]);
-  float tankPct[kNumTanks] = {0};
-  bool tankOk[kNumTanks] = {false};
+  float tankPct[kNumTanks ? kNumTanks : 1] = {0};
+  bool tankOk[kNumTanks ? kNumTanks : 1] = {false};
 
   // GX system name (VRM installation name): settings reg 5700, string[8] =
   // 16 chars max. Read once per connection; keeps its value across
