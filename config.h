@@ -38,8 +38,9 @@
 #endif
 
 // Temperature sensors (any com.victronenergy.temperature service). Labels
-// align by position; list length is free (polling/display resize to match,
-// labels must match length; the footer line fits about three).
+// align by position; list length is free including {} = none (polling,
+// display, and telemetry resize to match; labels must match length; the
+// footer line fits about three).
 #ifndef GX_TEMP_UNITS
 #define GX_TEMP_UNITS {22, 23, 25}
 #endif
@@ -47,7 +48,7 @@
 #define GX_TEMP_LABELS {"OUT", "FRIDGE", "IN"}
 #endif
 
-// Tank senders (any com.victronenergy.tank service). Same rules.
+// Tank senders (any com.victronenergy.tank service). Same rules, {} ok.
 #ifndef GX_TANK_UNITS
 #define GX_TANK_UNITS {23, 24, 25}
 #endif

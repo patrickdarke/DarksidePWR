@@ -223,7 +223,8 @@ line (red below `kTankLowPct = 20`%), power line (PV · ALT · DC · NET), gear
 button (432,280) → setup screen. Link dot: red = no Wi-Fi, amber = Wi-Fi but
 no GX, green = live (10 s staleness window). Sensor unit-ids/labels/°F-°C
 are config in `config.h` (secrets.h may override); sensor COUNTS derive
-from the GX_*_UNITS list
+from the GX_*_UNITS list — `{}` is valid (lines vanish; GxData arrays pad
+to >=1 so it stays legal C++) — per the GX_*_UNITS list
 lengths (ui.cpp static_asserts the label lists match; footer fits ~3 per
 line). Threshold in `ui.cpp`.
 
