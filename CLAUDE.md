@@ -68,7 +68,9 @@ partition table keeps the nvs partition); `esptool erase-flash` clears it.
   next session. Serial 'B' plays them on demand.
 - Case: `case/darksidepwr-case.3mf` (print-ready Bambu Studio project) +
   `.step` (CAD source, Shapr3D export) — owner-designed enclosure for the
-  3.5" panel, added 2026-07-25.
+  3.5" panel, added 2026-07-25. Photo of the printed case:
+  `docs/img/case-photo.jpg` (hero image in README + web flasher; EXIF/GPS
+  stripped — keep it that way if ever replaced).
 - `LovyanGFX_Driver.h` is ELECROW lesson-03 config, unmodified. Vendor repo:
   `Elecrow-RD/CrowPanel-Advance-3.5-HMI-ESP32-S3-AI-Powered-IPS-Touch-Screen-480x320`
   (revs V1.0 vs V1.2-1.4 have separate example trees).

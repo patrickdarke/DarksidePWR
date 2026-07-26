@@ -5,8 +5,8 @@ CrowPanel Advance 3.5" (ESP32-S3, 480×320 ILI9488 SPI, GT911 touch).
 Polls a Victron GX device (Ekrano) over **Modbus TCP** on the local
 network — no BLE keys, no cloud, works anywhere the truck is.
 
+![Printed case, CONTROL page live](docs/img/case-photo.jpg)
 ![Power screen](docs/img/main-screen.png)
-![Control page](docs/img/control-screen.png)
 
 **Flash it from your browser — no toolchain:**
 [patrickdarke.github.io/DarksidePWR](https://patrickdarke.github.io/DarksidePWR/)
@@ -17,7 +17,8 @@ network — no BLE keys, no cloud, works anywhere the truck is.
 page, telemetry).
 
 **Case:** [`case/`](case/) has a print-ready 3MF (Bambu Studio project)
-and the STEP source (Shapr3D) for a 3.5" panel enclosure.
+and the STEP source (Shapr3D) for a 3.5" panel enclosure — that's it in
+the photo above.
 
 ## Data path
 
@@ -79,3 +80,5 @@ solar charger on/off,
 alternator on/off — with read-back state and a confirm step on OFF), and a
 charge-complete chirp. Ideas next: sensor-detail second page
 (humidity/pressure, Orion detail), low-SOC alert.
+
+![Control page](docs/img/control-screen.png)
