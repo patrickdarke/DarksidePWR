@@ -15,7 +15,7 @@ firmware side is ~15 minutes.
 - A Mac/Linux box with `arduino-cli` for the one-time flash (or skip it
   entirely with the web flasher — see below).
 - Optional: a 3D-printed case — `case/` in the repo has the print-ready
-  3MF and the STEP source.
+  3MF and the STEP source (the printed result is the photo in the README).
 
 ## 1. Configure the GX
 
