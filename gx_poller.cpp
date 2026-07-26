@@ -75,6 +75,22 @@ void drop() {
 
 inline int s16(uint16_t v) { return (v > 32767) ? (int)v - 65536 : (int)v; }
 
+// Control read-backs stay STICKY through transport faults: on a rough
+// link, a mid-round fault otherwise blanks every control row for that
+// round and the CONTROL page flickers dead (its guards swallow taps on
+// muted rows). A fresh read or a clean exception always wins; a faulted
+// or skipped read keeps the row Ok while the previous read-back (still
+// in the task-persistent GxData) is under kCtlStickyMs old. Poller-task
+// state only — no locking.
+constexpr uint32_t kCtlStickyMs = 15000;
+struct { uint32_t mp = 0, shore = 0, relay = 0, dvcc = 0, solar = 0, alt = 0; } s_ctlFresh;
+
+bool ctlRow(RegResult r, uint32_t& okMs) {
+  if (r == kRegOk) { okMs = millis(); return true; }
+  if (r == kRegException) { okMs = 0; return false; }  // honest absence
+  return okMs != 0 && millis() - okMs < kCtlStickyMs;
+}
+
 bool pollOnce(GxData& out) {
   if (WiFi.status() != WL_CONNECTED) { drop(); out.valid = false; return false; }
   if (!mbConnected()) {
@@ -101,7 +117,7 @@ bool pollOnce(GxData& out) {
   // with a Modbus exception (kRegException) and just reads not-ok
   // (0 W/'--'). A kRegFault is different — the stream is suspect, later
   // replies would mis-pair with later requests and every further read
-  // would stall toward its 500 ms deadline — so stop reading, leave the
+  // would stall toward its 1500 ms deadline — so stop reading, leave the
   // rest not-ok, and cycle the socket below. The system values above are
   // good; the poll succeeds.
   bool sockOk = true;
@@ -159,26 +175,26 @@ bool pollOnce(GxData& out) {
   uint16_t cv[2];
   r = sockOk ? mbRead(GX_VEBUS_UNIT, 33, 1, cv) : kRegFault;
   if (r == kRegFault) sockOk = false;
-  out.mpModeOk = (r == kRegOk);
-  if (out.mpModeOk) out.mpMode = cv[0];
+  out.mpModeOk = ctlRow(r, s_ctlFresh.mp);
+  if (r == kRegOk) out.mpMode = cv[0];
 
   r = sockOk ? mbRead(GX_VEBUS_UNIT, 22, 1, cv) : kRegFault;
   if (r == kRegFault) sockOk = false;
-  out.shoreLimOk = (r == kRegOk);
-  if (out.shoreLimOk) out.shoreLimA = s16(cv[0]) / 10.0f;
+  out.shoreLimOk = ctlRow(r, s_ctlFresh.shore);
+  if (r == kRegOk) out.shoreLimA = s16(cv[0]) / 10.0f;
 
   r = sockOk ? mbRead(100, 806, 2, cv) : kRegFault;
   if (r == kRegFault) sockOk = false;
-  out.relayOk = (r == kRegOk);
-  if (out.relayOk) {
+  out.relayOk = ctlRow(r, s_ctlFresh.relay);
+  if (r == kRegOk) {
     out.relayClosed[0] = (cv[0] == 1);
     out.relayClosed[1] = (cv[1] == 1);
   }
 
   r = sockOk ? mbRead(100, 2705, 1, cv) : kRegFault;
   if (r == kRegFault) sockOk = false;
-  out.dvccOk = (r == kRegOk);
-  if (out.dvccOk) out.dvccLimA = s16(cv[0]);
+  out.dvccOk = ctlRow(r, s_ctlFresh.dvcc);
+  if (r == kRegOk) out.dvccLimA = s16(cv[0]);
 
   // SmartSolar /Mode — a unit of 0 means "not configured" (compile-time
   // constant, the branch folds away). An ext-control MPPT may accept the
@@ -186,8 +202,8 @@ bool pollOnce(GxData& out) {
   if (GX_SOLAR_UNIT != 0) {
     r = sockOk ? mbRead(GX_SOLAR_UNIT, 774, 1, cv) : kRegFault;
     if (r == kRegFault) sockOk = false;
-    out.solarModeOk = (r == kRegOk);
-    if (out.solarModeOk) out.solarMode = cv[0];
+    out.solarModeOk = ctlRow(r, s_ctlFresh.solar);
+    if (r == kRegOk) out.solarMode = cv[0];
   }
 
   // Orion /Mode (4119) only exists on newer GX firmware — one clean
@@ -196,16 +212,21 @@ bool pollOnce(GxData& out) {
     r = mbRead(GX_ALT_UNIT, 4119, 1, cv);
     if (r == kRegFault) {
       sockOk = false;
-      out.altModeOk = false;
+      out.altModeOk = ctlRow(r, s_ctlFresh.alt);
     } else if (r == kRegException) {
       s_altModeSupported = false;
       out.altModeOk = false;
+      s_ctlFresh.alt = 0;
       Serial.println("[ctl] alternator /Mode reg 4119 unavailable on this GX firmware");
     } else {
-      out.altModeOk = true;
+      out.altModeOk = ctlRow(r, s_ctlFresh.alt);
       out.altMode = cv[0];
     }
-  } else if (!s_altModeSupported) {
+  } else if (s_altModeSupported) {
+    // Reads skipped by an earlier fault this round — sticky like every
+    // other row (this case previously kept the stale flag forever).
+    out.altModeOk = ctlRow(kRegFault, s_ctlFresh.alt);
+  } else {
     out.altModeOk = false;
   }
   out.altModeSupported = s_altModeSupported;

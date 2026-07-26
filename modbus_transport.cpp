@@ -44,7 +44,7 @@ RegResult mbRead(uint8_t unit, uint16_t addr, uint16_t count, uint16_t* regs) {
   req[10] = count >> 8; req[11] = count & 0xFF;
   if (s_sock.write(req, sizeof(req)) != sizeof(req)) return kRegFault;
 
-  const uint32_t deadline = millis() + 500;
+  const uint32_t deadline = millis() + 1500;
   uint8_t hdr[8];
   if (!readExact(hdr, sizeof(hdr), deadline)) return kRegFault;
   const int bodyLen = ((hdr[4] << 8) | hdr[5]) - 2;  // after unit id + fc
@@ -74,7 +74,7 @@ RegResult mbWrite(uint8_t unit, uint16_t reg, uint16_t val) {
   req[10] = val >> 8; req[11] = val & 0xFF;
   if (s_sock.write(req, sizeof(req)) != sizeof(req)) return kRegFault;
 
-  const uint32_t deadline = millis() + 500;
+  const uint32_t deadline = millis() + 1500;
   uint8_t hdr[8];
   if (!readExact(hdr, sizeof(hdr), deadline)) return kRegFault;
   const int bodyLen = ((hdr[4] << 8) | hdr[5]) - 2;

@@ -31,6 +31,7 @@ constexpr const char* kMpLabels[4] = {"OFF", "CHG", "INV", "ON"};
 GxData s_last;            // latest sample (for +/- math and highlights)
 bool s_offArmed = false;  // MULTI OFF confirm state
 
+constexpr char kMutedHint[] = "row muted - no GX read-back right now";
 constexpr char kDefaultHint[] = "states show GX read-back   OFF asks twice";
 
 void setHint(const char* txt) { lv_label_set_text(s_hint, txt); }
@@ -84,7 +85,7 @@ void mpCb(lv_event_t* e) {
 }
 
 void shoreCb(lv_event_t* e) {
-  if (!s_last.shoreLimOk) return;
+  if (!s_last.shoreLimOk) { setHint(kMutedHint); return; }
   const int dir = (int)(uintptr_t)lv_event_get_user_data(e);
   float a = s_last.shoreLimA + dir * 5.0f;
   if (a < 5.0f) a = 5.0f;
@@ -93,13 +94,13 @@ void shoreCb(lv_event_t* e) {
 }
 
 void relayCb(lv_event_t* e) {
-  if (!s_last.relayOk) return;
+  if (!s_last.relayOk) { setHint(kMutedHint); return; }
   const int i = (int)(uintptr_t)lv_event_get_user_data(e);
   sendCmd(100, (uint16_t)(806 + i), s_last.relayClosed[i] ? 0 : 1);
 }
 
 void dvccCb(lv_event_t* e) {
-  if (!s_last.dvccOk) return;
+  if (!s_last.dvccOk) { setHint(kMutedHint); return; }
   const int dir = (int)(uintptr_t)lv_event_get_user_data(e);
   // Ordered 10..100 A, then NO LIMIT (-1) above 100.
   int a = s_last.dvccLimA;
@@ -113,13 +114,14 @@ void dvccCb(lv_event_t* e) {
 }
 
 void solarCb(lv_event_t* e) {
-  if (GX_SOLAR_UNIT == 0 || !s_last.solarModeOk) return;
+  if (GX_SOLAR_UNIT == 0) return;
+  if (!s_last.solarModeOk) { setHint(kMutedHint); return; }
   const int on = (int)(uintptr_t)lv_event_get_user_data(e);
   sendCmd(GX_SOLAR_UNIT, 774, on ? 1 : 4);
 }
 
 void altCb(lv_event_t* e) {
-  if (!s_last.altModeOk) return;
+  if (!s_last.altModeOk) { setHint(kMutedHint); return; }
   const int on = (int)(uintptr_t)lv_event_get_user_data(e);
   sendCmd(GX_ALT_UNIT, 4119, on ? 1 : 4);
 }
