@@ -270,8 +270,10 @@ void uiSetupBuild() {
   s_ssidTa = mkTa(16, 40, 300, "SSID", 32);
   mkBtn(324, 40, 140, 36, LV_SYMBOL_REFRESH "  SCAN", kRing, kText, scanBtnCb);
 
+  // Password shown in PLAIN TEXT — owner decision (2026-07-26, during the
+  // P4 port): masking caused a provisioning typo and a "password not
+  // saved" hunt; a truck cab is not a shoulder-surfing environment.
   s_passTa = mkTa(16, 84, 300, "PASSWORD", 63);
-  lv_textarea_set_password_mode(s_passTa, true);
   mkBtn(324, 84, 140, 36, "SAVE", kTeal, kBg, saveCb);
 
   // GX target (mDNS host or IP; clear the field to revert to secrets.h) and

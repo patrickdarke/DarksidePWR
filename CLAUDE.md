@@ -274,7 +274,9 @@ find GX_SOLAR_UNIT / GX_VEBUS_UNIT on a new install.
 
 Setup screen (ui_setup.cpp): async Wi-Fi scan (strongest-first, deduped, top
 12) into a tappable list; SSID + password + GX-target textareas (password
-mode on; GX field takes an mDNS host or IP, cleared = config.h default,
+in PLAIN TEXT — owner decision 2026-07-26, masking caused a provisioning
+typo on the P4 and "not saved" confusion; do not re-enable
+password mode. GX field takes an mDNS host or IP, cleared = config.h default,
 custom hosts do NOT fall back to the pinned IP) with the LVGL keyboard
 (480x152 at y168 — 36 px input rows keep all three fields visible above it,
 keys stay finger-sized); UNITS °F/°C
