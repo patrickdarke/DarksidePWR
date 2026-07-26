@@ -14,8 +14,11 @@ FQBN="esp32:esp32:esp32s3:FlashSize=16M,PSRAM=opi,CDCOnBoot=cdc,PartitionScheme=
 arduino-cli compile --fqbn "$FQBN" --libraries "$HERE/lib" "$HERE"
 
 if [ "${1:-}" = "flash" ]; then
-  # macOS enumerates the panel as cu.usbmodem*, Linux as ttyACM*
-  PORT="$(ls /dev/cu.usbmodem* /dev/ttyACM* 2>/dev/null | head -1)"
+  # macOS enumerates the panel as cu.usbmodem*, Linux as ttyACM*.
+  # `|| true`: under set -euo pipefail, ls failing on an unmatched glob
+  # (always the case for the other OS's pattern) would kill the script at
+  # this assignment — silently, before the error message below could print.
+  PORT="$(ls /dev/cu.usbmodem* /dev/ttyACM* 2>/dev/null | head -1 || true)"
   [ -n "$PORT" ] || { echo "✗ no panel port found (cu.usbmodem*/ttyACM*)"; exit 1; }
   arduino-cli upload --fqbn "$FQBN" -p "$PORT" "$HERE"
   echo "==> flashed $PORT"
