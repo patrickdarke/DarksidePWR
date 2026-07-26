@@ -12,7 +12,10 @@ firmware side is ~15 minutes.
 - Optional per sensor type: Orion XS alternator charger, temperature
   sensors (Ruuvi or wired), tank senders (Mopeka or resistive) — anything
   the GX already shows works.
-- A Mac/Linux box with `arduino-cli` for the one-time flash.
+- A Mac/Linux box with `arduino-cli` for the one-time flash (or skip it
+  entirely with the web flasher — see below).
+- Optional: a 3D-printed case — `case/` in the repo has the print-ready
+  3MF and the STEP source.
 
 ## 1. Configure the GX
 
