@@ -80,6 +80,13 @@ partition table keeps the nvs partition); `esptool erase-flash` clears it.
 - First flash over FACTORY firmware fails the auto-reset ("No serial data
   received") → hold BOOT, tap RST, retry. Once THIS firmware (CDCOnBoot=cdc)
   is on, `./build.sh flash` resets work normally.
+- **Cross-project hazard (learned 2026-07-26): never run `./build.sh flash`
+  with a DIFFERENT project's panel on USB** — the DarksidePWRP4 unit also
+  enumerates as `cu.usbmodem*`, so the glob happily targets it. If esptool
+  can't enter the bootloader it still sprays sync frames at the running
+  app, and those bytes are read as serial commands (0x55 = 'U' opens the
+  setup screen; 0x56 = 'V' starts the minutes-long unit sweep). Check
+  which unit is on USB before flashing.
 - Serial monitor: open the usbmodem port with pyserial **defaults** (DTR/RTS
   asserted). Setting `dtr=False/rts=False` BEFORE open straps the S3 into ROM
   download mode — the screen goes black because the chip is parked in the
