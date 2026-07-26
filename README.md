@@ -16,6 +16,9 @@ network — no BLE keys, no cloud, works anywhere the truck is.
 [User Guide](USERGUIDE.md) (every screen element, setup menu, control
 page, telemetry).
 
+**Case:** [`case/`](case/) has a print-ready 3MF (Bambu Studio project)
+and the STEP source (Shapr3D) for a 3.5" panel enclosure.
+
 ## Data path
 
 `gx_poller.cpp` reads unit **100** (`com.victronenergy.system`) on port 502,
