@@ -1,10 +1,11 @@
 #pragma once
 
-// Alert sounds on the passive piezo buzzer (BEEP_5025, net IO8_BEEP on the
-// V1.4 schematic, SS8050 transistor driver). Passive = it only sounds while
-// driven, so chirps are LEDC square waves at the part's ~4 kHz resonance,
-// played from a short-lived task (the LVGL loop never blocks). The NS4168
-// I2S speaker path is deprecated for alerts — pins remain documented in
-// CLAUDE.md if music/voice output is ever wanted.
-void beeperInit();   // attach LEDC (silent); park the NS4168 CTRL pin
+// Alert sounds on the board's piezo buzzer. Passive = it only sounds while
+// driven, so chirps are LEDC square waves at the part's resonance, played
+// from a short-lived task (the LVGL loop never blocks). Board-specific pin
+// facts live in CLAUDE.md and in the .cpp's per-board sections — on the
+// 3.5" board this is BEEP_5025 (net IO8_BEEP, SS8050 driver), with the
+// NS4168 I2S speaker path deprecated for alerts. On the 5.0" board the
+// on-board BUZZER footprint's exact GPIO is a documented open TODO.
+void beeperInit();   // attach LEDC (silent); park any needed control pins
 void beeperChirp();  // double chirp — "charge complete" (no-op if playing)

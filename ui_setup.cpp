@@ -6,13 +6,16 @@
 
 #include "backlight.h"
 #include "gx_settings.h"  // runtime GX target + temperature unit
+#include "night_mode.h"   // scheduled blanking (5" board only)
 #include "secrets.h"      // compile-time fallback creds for rejoin-on-CANCEL
 #include "ui_theme.h"
 #include "ui_widgets.h"
 
-// Layout (480x320): header row, SSID+SCAN row, PASSWORD+SAVE row, status
-// line, then the bottom region (y 152..320) shared by the scan list and the
-// keyboard — exactly one of the two is visible at a time.
+// Layout: header row, SSID+SCAN row, PASSWORD+SAVE row, status line, then a
+// bottom region shared by the scan list and the keyboard — exactly one of
+// the two is visible at a time. All of the scan/save/cancel state machine
+// below is board-agnostic (same Wi-Fi/GX-target/brightness logic either
+// way) — only uiSetupBuild()'s coordinates differ per board, guarded there.
 namespace {
 
 constexpr int kMaxNets = 12;
@@ -135,8 +138,21 @@ void taCb(lv_event_t* e) { showKeyboard(lv_event_get_target(e)); }
 void briCb(lv_event_t* e) {
   const int v = lv_slider_get_value(s_briSlider);
   if (lv_event_get_code(e) == LV_EVENT_VALUE_CHANGED) {
+    lv_label_set_text_fmt(s_briLbl, "%d%%", v);  // always immediate
+    // Throttle the actual backlight write: on the 5" board it's a blocking
+    // I2C transaction, and a fast drag fires VALUE_CHANGED many times a
+    // second — hammering it was implicated in display tearing found during
+    // bring-up (this board's RGB driver has no bounce buffer, so ANY
+    // CPU-side stall can show up as a torn frame; see CLAUDE.md). Release
+    // always applies the exact final value via backlightSave() below, so
+    // throttling the live preview costs nothing but a little smoothness.
+    // The 3.5" board's LEDC write is cheap enough that this is just free
+    // insurance there, not a fix for anything.
+    static uint32_t s_lastMs = 0;
+    const uint32_t now = millis();
+    if (now - s_lastMs < 80) return;
+    s_lastMs = now;
     backlightSet(v);  // live preview while dragging
-    lv_label_set_text_fmt(s_briLbl, "%d%%", v);
   } else {            // LV_EVENT_RELEASED
     backlightSave(v);
   }
@@ -217,16 +233,16 @@ void cancelCb(lv_event_t*) {
 }
 
 lv_obj_t* mkBtn(int x, int y, int w, int h, const char* txt, uint32_t bg,
-                uint32_t fg, lv_event_cb_t cb) {
-  return uiwButton(s_scr, x, y, w, h, txt, bg, fg, cb);
+                uint32_t fg, lv_event_cb_t cb, void* user = nullptr) {
+  return uiwButton(s_scr, x, y, w, h, txt, bg, fg, cb, user);
 }
 
-lv_obj_t* mkTa(int x, int y, int w, const char* placeholder, int maxLen) {
+lv_obj_t* mkTa(int x, int y, int w, const char* placeholder, int maxLen, int h = 36) {
   lv_obj_t* ta = lv_textarea_create(s_scr);
   lv_textarea_set_one_line(ta, true);
   lv_textarea_set_placeholder_text(ta, placeholder);
   lv_textarea_set_max_length(ta, maxLen);
-  lv_obj_set_size(ta, w, 36);
+  lv_obj_set_size(ta, w, h);
   lv_obj_set_pos(ta, x, y);
   lv_obj_set_style_bg_color(ta, lv_color_hex(kTile), 0);
   lv_obj_set_style_text_color(ta, lv_color_hex(kText), 0);
@@ -241,6 +257,167 @@ lv_obj_t* mkTa(int x, int y, int w, const char* placeholder, int maxLen) {
 
 }  // namespace
 
+#if defined(BOARD_CROWPANEL_50)
+// Night-mode row: wall-mounted-in-a-bedroom feature, this board only (see
+// night_mode.h/CLAUDE.md). Toggle + two 30-min steppers, same immediate
+// apply-and-persist convention as UNITS/BRIGHT above — no SAVE needed,
+// CANCEL doesn't undo it either.
+namespace {
+
+lv_obj_t* s_nightLbl = nullptr;  // label inside the NIGHT ON/OFF toggle
+lv_obj_t* s_sleepVal = nullptr;
+lv_obj_t* s_wakeVal = nullptr;
+
+void nightToggleCb(lv_event_t*) {
+  bool en; int sm, wm;
+  nightModeGetSchedule(en, sm, wm);
+  en = !en;
+  nightModeSetSchedule(en, sm, wm);
+  lv_label_set_text(s_nightLbl, en ? "NIGHT ON" : "NIGHT OFF");
+}
+
+void sleepStepCb(lv_event_t* e) {
+  const int dir = (int)(uintptr_t)lv_event_get_user_data(e);
+  bool en; int sm, wm;
+  nightModeGetSchedule(en, sm, wm);
+  sm = (sm + dir * 30 + 1440) % 1440;
+  nightModeSetSchedule(en, sm, wm);
+  lv_label_set_text_fmt(s_sleepVal, "SLEEP %02d:%02d", sm / 60, sm % 60);
+}
+
+void wakeStepCb(lv_event_t* e) {
+  const int dir = (int)(uintptr_t)lv_event_get_user_data(e);
+  bool en; int sm, wm;
+  nightModeGetSchedule(en, sm, wm);
+  wm = (wm + dir * 30 + 1440) % 1440;
+  nightModeSetSchedule(en, sm, wm);
+  lv_label_set_text_fmt(s_wakeVal, "WAKE %02d:%02d", wm / 60, wm % 60);
+}
+
+}  // namespace
+#endif
+
+#if defined(BOARD_CROWPANEL_50)
+// ELECROW CrowPanel Advance 5.0" (800x480) — same fields, same behavior,
+// laid out with the extra room this canvas gives: status gets its own row
+// instead of squeezing into the header, taller input rows (44px), and a
+// taller keyboard (250px) that still clears the SSID/PASSWORD/GX rows the
+// same way the 3.5" build's does (see the alignment note below).
+void uiSetupBuild() {
+  s_scr = lv_obj_create(nullptr);
+  lv_obj_set_style_bg_color(s_scr, lv_color_hex(kBg), 0);
+  lv_obj_set_style_bg_opa(s_scr, LV_OPA_COVER, 0);
+  lv_obj_clear_flag(s_scr, LV_OBJ_FLAG_SCROLLABLE);
+
+  lv_obj_t* hdr = lv_label_create(s_scr);
+  lv_obj_set_style_text_font(hdr, &lv_font_montserrat_14, 0);
+  lv_obj_set_style_text_color(hdr, lv_color_hex(kMuted), 0);
+  lv_label_set_text(hdr, "SETUP");
+  lv_obj_set_pos(hdr, 24, 16);
+
+  mkBtn(632, 12, 144, 38, LV_SYMBOL_CLOSE "  CANCEL", kRing, kText, cancelCb);
+
+  s_status = lv_label_create(s_scr);
+  lv_obj_set_style_text_font(s_status, &lv_font_montserrat_12, 0);
+  lv_obj_set_style_text_color(s_status, lv_color_hex(kMuted), 0);
+  lv_label_set_long_mode(s_status, LV_LABEL_LONG_DOT);
+  lv_obj_set_width(s_status, 700);
+  lv_label_set_text(s_status, "");
+  lv_obj_set_pos(s_status, 24, 48);
+
+  s_ssidTa = mkTa(24, 76, 460, "SSID", 32, 44);
+  mkBtn(500, 76, 200, 44, LV_SYMBOL_REFRESH "  SCAN", kRing, kText, scanBtnCb);
+
+  s_passTa = mkTa(24, 130, 460, "PASSWORD", 63, 44);
+  lv_textarea_set_password_mode(s_passTa, true);
+  mkBtn(500, 130, 200, 44, "SAVE", kTeal, kBg, saveCb);
+
+  s_gxTa = mkTa(24, 184, 460, "GX ADDRESS", 32, 44);
+  lv_obj_t* unitBtn = mkBtn(500, 184, 200, 44, kUnitF, kRing, kText, unitCb);
+  s_unitLbl = lv_obj_get_child(unitBtn, 0);
+
+  lv_obj_t* briTitle = lv_label_create(s_scr);
+  lv_obj_set_style_text_font(briTitle, &lv_font_montserrat_12, 0);
+  lv_obj_set_style_text_color(briTitle, lv_color_hex(kMuted), 0);
+  lv_label_set_text(briTitle, "BRIGHT");
+  lv_obj_set_pos(briTitle, 24, 246);
+
+  s_briSlider = lv_slider_create(s_scr);
+  lv_slider_set_range(s_briSlider, kBacklightMinPct, 100);
+  lv_slider_set_value(s_briSlider, backlightGet(), LV_ANIM_OFF);
+  lv_obj_set_size(s_briSlider, 600, 18);
+  lv_obj_set_pos(s_briSlider, 100, 242);
+  lv_obj_set_ext_click_area(s_briSlider, 12);
+  lv_obj_set_style_bg_color(s_briSlider, lv_color_hex(kRing), LV_PART_MAIN);
+  lv_obj_set_style_bg_opa(s_briSlider, LV_OPA_COVER, LV_PART_MAIN);
+  lv_obj_set_style_bg_color(s_briSlider, lv_color_hex(kTeal), LV_PART_INDICATOR);
+  lv_obj_set_style_bg_color(s_briSlider, lv_color_hex(kText), LV_PART_KNOB);
+  lv_obj_set_style_pad_all(s_briSlider, 4, LV_PART_KNOB);
+  lv_obj_add_event_cb(s_briSlider, briCb, LV_EVENT_VALUE_CHANGED, nullptr);
+  lv_obj_add_event_cb(s_briSlider, briCb, LV_EVENT_RELEASED, nullptr);
+
+  s_briLbl = lv_label_create(s_scr);
+  lv_obj_set_style_text_font(s_briLbl, &lv_font_montserrat_12, 0);
+  lv_obj_set_style_text_color(s_briLbl, lv_color_hex(kText), 0);
+  lv_label_set_text_fmt(s_briLbl, "%d%%", backlightGet());
+  lv_obj_set_pos(s_briLbl, 712, 246);
+
+  s_list = lv_list_create(s_scr);
+  lv_obj_set_size(s_list, 752, 100);  // shortened 40px to fit the night-mode row below
+  lv_obj_set_pos(s_list, 24, 266);
+  lv_obj_set_style_bg_color(s_list, lv_color_hex(kTile), 0);
+  lv_obj_set_style_border_width(s_list, 0, 0);
+  lv_obj_set_style_radius(s_list, 8, 0);
+  lv_obj_set_style_pad_row(s_list, 2, 0);
+
+  // Night mode: wall/bedroom-mounted install only (see night_mode.h). Same
+  // "covered by the keyboard when it's up" treatment as the list/slider
+  // above — nothing here needs to stay visible while typing elsewhere.
+  {
+    bool en; int sm, wm;
+    nightModeGetSchedule(en, sm, wm);
+    lv_obj_t* nightBtn = mkBtn(24, 376, 130, 40, en ? "NIGHT ON" : "NIGHT OFF",
+                               kRing, kText, nightToggleCb);
+    s_nightLbl = lv_obj_get_child(nightBtn, 0);
+
+    mkBtn(170, 376, 44, 40, LV_SYMBOL_MINUS, kTile, kText, sleepStepCb, (void*)(uintptr_t)-1);
+    s_sleepVal = lv_label_create(s_scr);
+    lv_obj_set_style_text_font(s_sleepVal, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(s_sleepVal, lv_color_hex(kText), 0);
+    lv_obj_set_style_text_align(s_sleepVal, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_width(s_sleepVal, 140);
+    lv_obj_set_pos(s_sleepVal, 218, 388);
+    lv_label_set_text_fmt(s_sleepVal, "SLEEP %02d:%02d", sm / 60, sm % 60);
+    mkBtn(362, 376, 44, 40, LV_SYMBOL_PLUS, kTile, kText, sleepStepCb, (void*)(uintptr_t)1);
+
+    mkBtn(420, 376, 44, 40, LV_SYMBOL_MINUS, kTile, kText, wakeStepCb, (void*)(uintptr_t)-1);
+    s_wakeVal = lv_label_create(s_scr);
+    lv_obj_set_style_text_font(s_wakeVal, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(s_wakeVal, lv_color_hex(kText), 0);
+    lv_obj_set_style_text_align(s_wakeVal, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_width(s_wakeVal, 140);
+    lv_obj_set_pos(s_wakeVal, 468, 388);
+    lv_label_set_text_fmt(s_wakeVal, "WAKE %02d:%02d", wm / 60, wm % 60);
+    mkBtn(612, 376, 44, 40, LV_SYMBOL_PLUS, kTile, kText, wakeStepCb, (void*)(uintptr_t)1);
+  }
+
+  // Same lv_keyboard self-align gotcha as the 3.5" build: it anchors
+  // BOTTOM_MID at creation, so dock with align, never set_pos. 250px tall
+  // clears the GX row (ends y=228) the same way the 3.5" build's does.
+  s_kb = lv_keyboard_create(s_scr);
+  lv_obj_set_size(s_kb, 800, 250);
+  lv_obj_align(s_kb, LV_ALIGN_BOTTOM_MID, 0, 0);
+  lv_obj_set_style_bg_color(s_kb, lv_color_hex(kBg), 0);
+  lv_obj_set_style_bg_color(s_kb, lv_color_hex(kTile), LV_PART_ITEMS);
+  lv_obj_set_style_text_color(s_kb, lv_color_hex(kText), LV_PART_ITEMS);
+  lv_obj_add_flag(s_kb, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_add_event_cb(s_kb, kbCb, LV_EVENT_ALL, nullptr);
+
+  s_scanTimer = lv_timer_create(scanTimerCb, 300, nullptr);
+  lv_timer_pause(s_scanTimer);
+}
+#else
+// ELECROW CrowPanel Advance 3.5" (480x320) — the truck's install.
 void uiSetupBuild() {
   s_scr = lv_obj_create(nullptr);
   lv_obj_set_style_bg_color(s_scr, lv_color_hex(kBg), 0);
@@ -333,9 +510,15 @@ void uiSetupBuild() {
   s_scanTimer = lv_timer_create(scanTimerCb, 300, nullptr);
   lv_timer_pause(s_scanTimer);
 }
+#endif
 
 void uiSetupOpen() {
-  s_prevScr = lv_scr_act();
+  // Never self-reference: re-opening (e.g. serial 'U' twice in a row while
+  // already here) must not overwrite the real "return to" screen with this
+  // one — that made CANCEL/SAVE's lv_scr_load(s_prevScr) a no-op, which is
+  // exactly what it looks like when neither button appears to do anything.
+  lv_obj_t* cur = lv_scr_act();
+  if (cur != s_scr) s_prevScr = cur;
   // Prefill every field with its current value; saveCb applies only what
   // differs from these prefills. Password always starts blank.
   String ssid;
@@ -352,6 +535,15 @@ void uiSetupOpen() {
   lv_label_set_text(s_unitLbl, gxTempsInF() ? kUnitF : kUnitC);
   lv_slider_set_value(s_briSlider, backlightGet(), LV_ANIM_OFF);
   lv_label_set_text_fmt(s_briLbl, "%d%%", backlightGet());
+#if defined(BOARD_CROWPANEL_50)
+  {
+    bool en; int sm, wm;
+    nightModeGetSchedule(en, sm, wm);
+    lv_label_set_text(s_nightLbl, en ? "NIGHT ON" : "NIGHT OFF");
+    lv_label_set_text_fmt(s_sleepVal, "SLEEP %02d:%02d", sm / 60, sm % 60);
+    lv_label_set_text_fmt(s_wakeVal, "WAKE %02d:%02d", wm / 60, wm % 60);
+  }
+#endif
   hideKeyboard();
   lv_scr_load(s_scr);
   startScan();

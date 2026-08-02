@@ -51,13 +51,25 @@ def capture(ser, out_path):
         sys.exit("no [shot] begin marker")
     data = bytearray()
     need = w * h * 2
-    deadline = time.time() + 60
+    # ~115200 baud caps this well under 10 KB/s of actual hex+newline
+    # throughput; the 3.5" screen (307200 bytes) fit in 60s, the 5.0"
+    # screen (768000 bytes, 2.5x more) does not — scale with frame size.
+    deadline = time.time() + max(60, need / 2500) + 10
     while len(data) < need and time.time() < deadline:
         line = ser.readline().strip()
         if line == b"[shot] end":
             break
-        if HEX_RE.match(line):
+        if HEX_RE.match(line) and len(line) % 2 == 0:
             data.extend(bytes.fromhex(line.decode()))
+        elif line:
+            # Corrupted/truncated line — serial noise (observed to correlate
+            # with concurrent WiFi scan activity, e.g. capturing the setup
+            # screen right after it starts one) can drop or splice a
+            # character into an otherwise-hex line. Pad with zeros to keep
+            # pixel alignment for the rest of the frame instead of losing
+            # sync (or crashing) over one corrupted chunk.
+            pad = min(64, need - len(data))
+            data.extend(b"\x00" * pad)
     if len(data) < need:
         sys.exit(f"short frame: {len(data)}/{need} bytes")
 
@@ -79,9 +91,12 @@ def capture(ser, out_path):
 def main():
     out = sys.argv[1]
     pre_cmd = sys.argv[2] if len(sys.argv) > 2 else ""  # e.g. "U" + delay
-    ports = glob.glob("/dev/cu.usbmodem*")
+    # cu.usbmodem* = native USB-CDC (3.5" board). cu.wchusbserial* = WCH
+    # UART bridge (5" board, confirmed live — needs its CH34x VCP driver
+    # installed+approved first, see CLAUDE.md).
+    ports = glob.glob("/dev/cu.usbmodem*") + glob.glob("/dev/cu.wchusbserial*")
     if not ports:
-        sys.exit("no usbmodem port")
+        sys.exit("no usbmodem/wchusbserial port")
     ser = serial.Serial(ports[0], 115200, timeout=2)
     time.sleep(0.3)
     if pre_cmd:

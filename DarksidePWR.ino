@@ -1,11 +1,17 @@
-// Darkside PWR — Victron power monitor for the CrowPanel Advance 3.5"
-// (ESP32-S3, 480x320 ILI9488 SPI, GT911 touch). Polls the Ekrano GX over
-// Modbus TCP (gx_poller.h owns the register map; framing in
-// modbus_transport, runtime settings in gx_settings) and renders the
+// Darkside PWR — Victron power monitor, two board targets selected at
+// compile time by BOARD_CROWPANEL_50 (see build.sh):
+//   - default: CrowPanel Advance 3.5" (ESP32-S3, 480x320 ILI9488 SPI,
+//     GT911 touch) — the truck's install.
+//   - BOARD_CROWPANEL_50: CrowPanel Advance 5.0" (ESP32-S3, 800x480
+//     ST7262 RGB-parallel, GT911 touch) — a second, separate install with
+//     its own Victron device roster (see config_50.h, CLAUDE.md).
+// Polls the GX over Modbus TCP (gx_poller.h owns the register map; framing
+// in modbus_transport, runtime settings in gx_settings) and renders the
 // DSODash-style power screen (ui.cpp).
 //
-// Panel bring-up mirrors ELECROW's lesson-03 for the V1.2-V1.4 boards
-// (LovyanGFX_Driver.h is their driver config, unmodified).
+// Panel bring-up mirrors ELECROW's lesson-03 for each board
+// (LovyanGFX_Driver_35.h / LovyanGFX_Driver_50.h are their driver configs,
+// unmodified).
 #include <lvgl.h>
 #include <Preferences.h>
 #include <WiFi.h>
@@ -16,6 +22,7 @@
 #include "beeper.h"
 #include "gx_poller.h"
 #include "gx_settings.h"
+#include "night_mode.h"
 #include "secrets.h"
 #include "ui.h"
 #include "ui_control.h"
@@ -23,8 +30,13 @@
 
 namespace {
 
+#if defined(BOARD_CROWPANEL_50)
+constexpr int kLcdW = 800;
+constexpr int kLcdH = 480;
+#else
 constexpr int kLcdW = 480;
 constexpr int kLcdH = 320;
+#endif
 
 LGFX gfx;
 lv_disp_draw_buf_t s_drawBuf;
@@ -50,6 +62,19 @@ constexpr int kChimeSocPct = 99;
 int s_chargeRun = 0;
 bool s_chimeArmed = false;
 
+#if defined(BOARD_CROWPANEL_50)
+// RGB-parallel panel: no per-flush setAddrWindow/writePixels (that's an
+// SPI-panel command sequence) — push straight into the continuously-scanned
+// PSRAM frame buffer via DMA. Pattern verified against ELECROW's
+// V1.2_and_V1.3 lesson-03 vendor example.
+void dispFlush(lv_disp_drv_t* drv, const lv_area_t* area, lv_color_t* px) {
+  const uint32_t w = area->x2 - area->x1 + 1;
+  const uint32_t h = area->y2 - area->y1 + 1;
+  if (gfx.getStartCount() > 0) gfx.endWrite();
+  gfx.pushImageDMA(area->x1, area->y1, w, h, (lgfx::rgb565_t*)&px->full);
+  lv_disp_flush_ready(drv);
+}
+#else
 void dispFlush(lv_disp_drv_t* drv, const lv_area_t* area, lv_color_t* px) {
   const uint32_t w = area->x2 - area->x1 + 1;
   const uint32_t h = area->y2 - area->y1 + 1;
@@ -59,6 +84,7 @@ void dispFlush(lv_disp_drv_t* drv, const lv_area_t* area, lv_color_t* px) {
   gfx.endWrite();
   lv_disp_flush_ready(drv);
 }
+#endif
 
 // Debug: dump the active screen over serial as hex RGB565 (LV_USE_SNAPSHOT
 // renders the widget tree into a PSRAM buffer). Framed by "[shot] begin/end"
@@ -81,7 +107,13 @@ void dumpScreen() {
   // The dump must not lose bytes, so give TX a real timeout for its
   // duration (the caller is a draining capture script, and the UI stalling
   // during an explicit screenshot is fine); restored to 0 below.
+  // setTxTimeoutMs is HWCDC-only (native USB-CDC, the 3.5" board) — the
+  // 5" board's Serial is plain HardwareSerial over its UART bridge, which
+  // has no equivalent API and doesn't have the same backpressure failure
+  // mode this works around (see CLAUDE.md's HWCDC backpressure law).
+#if !defined(BOARD_CROWPANEL_50)
   Serial.setTxTimeoutMs(250);
+#endif
   Serial.printf("[shot] begin %dx%d rgb565le\n", dsc.header.w, dsc.header.h);
   static const char kHex[] = "0123456789abcdef";
   char line[129];
@@ -101,7 +133,9 @@ void dumpScreen() {
     n -= chunk;
   }
   Serial.println("[shot] end");
+#if !defined(BOARD_CROWPANEL_50)
   Serial.setTxTimeoutMs(0);
+#endif
   heap_caps_free(buf);
 }
 
@@ -113,9 +147,41 @@ void telKV(char* tel, int& off, size_t cap, const char* key, bool ok, int v) {
             : snprintf(tel + off, cap - off, " %s=-", key);
 }
 
+// Recurring (forever, every poll/every 10s) telemetry — must never block.
+// The 3.5" board's HWCDC Serial has setTxTimeoutMs(0) for exactly this; a
+// HardwareSerial (this project's only other Serial) has no such API, so a
+// host that has the port open but isn't draining it (e.g. plugged into a
+// laptop for power with nothing reading) blocks every Serial write until
+// there's room — measured live on the 5" board: 400+ seconds solid, the
+// whole UI frozen. Drop the line instead of blocking when full. Explicit
+// debug output (dumpScreen(), the 'M'/'V' command replies, etc.) is exempt
+// on purpose — those are one-shot, user-triggered, and losing bytes there
+// is worse than the brief stall, same as the 3.5" board's screenshot dump.
+void telPrintln(const char* s) {
+#if defined(BOARD_CROWPANEL_50)
+  if (Serial.availableForWrite() < (int)strlen(s) + 2) return;
+#endif
+  Serial.println(s);
+}
+
 void touchRead(lv_indev_drv_t*, lv_indev_data_t* data) {
   uint16_t x, y;
-  if (gfx.getTouch(&x, &y)) {
+  const bool pressed = gfx.getTouch(&x, &y);
+
+  // Night mode (5" board only — a no-op stub elsewhere, so no #ifdef
+  // needed here): a fresh touch-down wakes a blanked screen, but must NOT
+  // also land on whatever's underneath (e.g. popping open CONTROL in the
+  // dark), so a blanked screen consumes the touch here and never reports
+  // it to LVGL.
+  static bool s_wasPressed = false;
+  const bool edge = pressed && !s_wasPressed;
+  s_wasPressed = pressed;
+  if (nightModeTick(edge)) {
+    data->state = LV_INDEV_STATE_REL;
+    return;
+  }
+
+  if (pressed) {
     data->state = LV_INDEV_STATE_PR;
     data->point.x = x;
     data->point.y = y;
@@ -132,7 +198,12 @@ void setup() {
   // pauses draining (paused terminal, capture script mid-setup) would stall
   // every Serial print for its TX timeout — measured as multi-second UI
   // freezes. Timeout 0 = drop output when the buffer is full instead.
+  // HWCDC-only API (native USB-CDC, 3.5" board) — the 5" board's Serial is
+  // plain HardwareSerial over its UART bridge, with no equivalent call and
+  // not the same failure mode (see CLAUDE.md's HWCDC backpressure law).
+#if !defined(BOARD_CROWPANEL_50)
   Serial.setTxTimeoutMs(0);
+#endif
   const char* rr;
   switch (esp_reset_reason()) {
     case ESP_RST_POWERON: rr = "poweron"; break;
@@ -146,10 +217,23 @@ void setup() {
   }
   Serial.printf("\n[pwr] Darkside PWR boot (reset: %s)\n", rr);
 
+  // backlightInit() must run BEFORE gfx bring-up on the 50 board: its I2C
+  // handshake also arms the touch controller's address (0x5D), which has to
+  // happen before LovyanGFX's own touch init claims the I2C_NUM_0 port.
+  // Harmless reorder for the 35 board, which doesn't touch gfx/I2C at all.
+  backlightInit();           // LEDC PWM on GPIO 38 [35] / I2C 0x30 cmd [50],
+                              // percent from NVS either way
+#if defined(BOARD_CROWPANEL_50)
+  gfx.init();
+  gfx.initDMA();
+  gfx.startWrite();
+  gfx.fillScreen(TFT_BLACK);
+#else
   gfx.begin();
   gfx.fillScreen(TFT_BLACK);
-  backlightInit();           // LEDC PWM on GPIO 38, percent from NVS
-  beeperInit();              // piezo LEDC (silent) + NS4168 CTRL parked low
+#endif
+  beeperInit();               // piezo LEDC (silent) + NS4168 CTRL parked low
+                               // [35] / TODO GPIO not yet confirmed [50]
 
   lv_init();
   const size_t bufSz = sizeof(lv_color_t) * kLcdW * kLcdH;
@@ -203,6 +287,8 @@ void setup() {
     Serial.printf("[pwr] wifi connecting to %s (%s)\n",
                   ssid.c_str(), fromNvs ? "nvs" : "secrets.h");
   }
+
+  nightModeInit();  // configures NTP (non-blocking) + loads the schedule
 }
 
 void loop() {
@@ -249,7 +335,9 @@ void loop() {
   s_lastLoopMs = now;
   if ((int32_t)(now - s_nextGapReportMs) >= 0) {
     s_nextGapReportMs = now + 10000;
-    Serial.printf("[ui] max loop gap %lums\n", (unsigned long)s_maxGapMs);
+    char gapMsg[40];
+    snprintf(gapMsg, sizeof gapMsg, "[ui] max loop gap %lums", (unsigned long)s_maxGapMs);
+    telPrintln(gapMsg);
     s_maxGapMs = 0;
   }
 
@@ -307,11 +395,19 @@ void loop() {
       telKV(tel, off, sizeof tel, "r1", s_gx.relayOk, s_gx.relayClosed[0] ? 1 : 0);
       telKV(tel, off, sizeof tel, "r2", s_gx.relayOk, s_gx.relayClosed[1] ? 1 : 0);
       telKV(tel, off, sizeof tel, "chg", s_gx.dvccOk, s_gx.dvccLimA);
-      telKV(tel, off, sizeof tel, "sm", s_gx.solarModeOk, s_gx.solarMode);
+      // Solar is a list now (an install can have more than one MPPT) — same
+      // slash-joined shape as the temps/tanks sections above.
+      if (GxData::kNumSolar > 0 && off < (int)sizeof tel) {
+        off += snprintf(tel + off, sizeof tel - off, " sm=");
+        for (int i = 0; i < GxData::kNumSolar && off < (int)sizeof tel; i++)
+          off += s_gx.solarModeOk[i]
+                     ? snprintf(tel + off, sizeof tel - off, "%s%d", i ? "/" : "", s_gx.solarMode[i])
+                     : snprintf(tel + off, sizeof tel - off, "%s-", i ? "/" : "");
+      }
       telKV(tel, off, sizeof tel, "am", s_gx.altModeOk, s_gx.altMode);
       if (off < (int)sizeof tel)
         snprintf(tel + off, sizeof tel - off, " poll=%lums", (unsigned long)pollMs);
-      Serial.println(tel);
+      telPrintln(tel);
     }
   }
 

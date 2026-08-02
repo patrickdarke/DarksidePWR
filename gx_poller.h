@@ -14,6 +14,7 @@
 // match (ui.cpp static_asserts the label lists against these counts).
 constexpr uint8_t kGxTempUnits[] = GX_TEMP_UNITS;
 constexpr uint8_t kGxTankUnits[] = GX_TANK_UNITS;
+constexpr uint8_t kGxSolarUnits[] = GX_SOLAR_UNITS;
 
 // Live values read from the GX. System aggregates on unit 100 (fatal on
 // failure); everything else is per-device non-fatal — an absent device
@@ -63,8 +64,20 @@ struct GxData {
   bool relayOk = false;
   int dvccLimA = 0;        // DVCC max charge current, -1 = no limit
   bool dvccOk = false;
-  int solarMode = 0;       // SmartSolar /Mode: 1 on, 4 off
-  bool solarModeOk = false;  // stays false when GX_SOLAR_UNIT is 0
+  // SmartSolar chargers, order per GX_SOLAR_UNITS (list, not a single unit —
+  // an install can have more than one MPPT; {} is legal, same pad-to->=1
+  // trick as temps/tanks so the array stays valid C++).
+  static constexpr int kNumSolar = sizeof(kGxSolarUnits) / sizeof(kGxSolarUnits[0]);
+  int solarMode[kNumSolar ? kNumSolar : 1] = {0};      // /Mode: 1 on, 4 off
+  bool solarModeOk[kNumSolar ? kNumSolar : 1] = {false};
+  // Each charger's own PV output. TODO: register below is UNVERIFIED — unit
+  // 100 reg 850 (system aggregate, used for the footer/tile PV total) is the
+  // only solar power register this project has confirmed on real hardware.
+  // Per-charger power needs checking against victronenergy/dbus_modbustcp's
+  // attributes.csv or live experimentation once a GX is reachable; do not
+  // trust solarPvW until that's done.
+  int solarPvW[kNumSolar ? kNumSolar : 1] = {0};
+  bool solarPvOk[kNumSolar ? kNumSolar : 1] = {false};
   int altMode = 0;         // Orion XS /Mode: 1 on, 4 off (newer firmware)
   bool altModeOk = false;  // this round's read answered
   bool altModeSupported = true;  // false only after a clean exception —

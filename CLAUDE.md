@@ -1,11 +1,23 @@
 # Darkside PWR — project laws and hard-won facts
 
-Victron power monitor for the truck ("Darkside.Overland" system) on the
-ELECROW CrowPanel Advance 3.5". Sibling of the DSODash project and follows
-its design language (dark `0x0C1018` bg, tiles `0x111826`, teal/green/amber/
-blue accents, montserrat) and its working rules. Read this file before
-touching anything — every fact here was verified on hardware or against the
-live GX, and several cost real debugging time.
+Victron power monitor, now TWO installs in one repo, selected at compile
+time (`BOARD_CROWPANEL_50`, see "Board switch" below):
+- The truck ("Darkside.Overland" system) on the ELECROW CrowPanel Advance
+  3.5" — the original install, default build target.
+- A second, separate new install (own Victron GX, own device roster — two
+  MPPT chargers, Orion DC-DC, one LPG tank, a SmartShunt + two Bluetooth
+  smart batteries, no Ruuvi temps) on the ELECROW CrowPanel Advance 5.0"
+  (800x480), added 2026-07-31. Not a bigger-screen reskin of the truck's
+  panel — different display bus (RGB-parallel vs SPI), different backlight
+  mechanism, several GPIOs mean different things. See its own Hardware
+  section below; do not assume 3.5" facts carry over.
+
+Sibling of the DSODash project and follows its design language (dark
+`0x0C1018` bg, tiles `0x111826`, teal/green/amber/blue accents, montserrat)
+and its working rules. Read this file before touching anything — every fact
+here was verified on hardware or against a live GX, and several cost real
+debugging time. Facts explicitly marked TODO/unverified are exactly that —
+don't treat them as confirmed.
 
 ## Machine setup (new computer)
 
@@ -88,13 +100,34 @@ partition table keeps the nvs partition); `esptool erase-flash` clears it.
   monitor` loses its buffered output.
 - Telemetry: one `[gx] ...` line per 1 Hz poll carries every displayed value —
   verify changes by telemetry, not by eyeball.
-- HWCDC backpressure law (cost a fake 6 s "UI stall"): a host that OPENS the
+- HWCDC backpressure law (cost a fake 6 s "UI stall"; the API used here,
+  `setTxTimeoutMs`, is HWCDC/native-USB-CDC-only and doesn't exist on
+  `HardwareSerial` — `#if !defined(BOARD_CROWPANEL_50)`-guarded in
+  `DarksidePWR.ino`; the 5" board needs its OWN fix for the same underlying
+  problem, see the next bullet — it is NOT immune): a host that OPENS the
   CDC port but pauses draining makes every Serial print block for its TX
   timeout — the loop froze seconds at a time. Firmware runs
   `Serial.setTxTimeoutMs(0)` (drop, never block); the screenshot dump
   temporarily restores 250 ms so frames arrive intact. If `[ui] max loop
-  gap` ever spikes while a capture/monitor script is mid-setup, suspect the
-  host, not the firmware.
+  gap` ever spikes on the 3.5" board while a capture/monitor script is
+  mid-setup, suspect the host, not the firmware.
+- UART backpressure law, 5" board (found during first bring-up, 2026-07-31
+  — same underlying problem as the HWCDC law above, worse because
+  `HardwareSerial` has no equivalent fix available): a host that has the
+  port open but stops draining it (e.g. plugged into a laptop for power
+  with no program reading the port) blocks every `Serial` write until
+  there's room — this is NOT limited to native-USB-CDC. **Measured live**:
+  a screenshot dump interrupted mid-capture left the board's UART TX
+  blocked, and `loop()` froze for **406515 ms** once the recurring
+  telemetry hit the same wall. Fix: `DarksidePWR.ino`'s `telPrintln()`
+  checks `Serial.availableForWrite()` and drops the line instead of
+  blocking, for the two lines that run forever in normal operation (the
+  ~1 Hz `[gx] ...` telemetry, the 10 s `[ui] max loop gap` line) —
+  `BOARD_CROWPANEL_50`-only, a no-op on the 3.5" board (whose HWCDC fix
+  above already covers it). Explicit debug output (`dumpScreen()`, the
+  `'M'`/`'V'` command replies) is deliberately exempt — same tradeoff the
+  3.5" board's screenshot dump already makes: losing bytes there is worse
+  than the stall.
 - WEB FLASHER: https://patrickdarke.github.io/DarksidePWR/ (GitHub Pages
   from /docs; esp-web-tools + docs/manifest.json + the MERGED image
   docs/firmware/darksidepwr.bin, gitignore-excepted). Rebuild the image
@@ -112,8 +145,11 @@ partition table keeps the nvs partition); `esptool erase-flash` clears it.
   keep USERGUIDE.md / SETUP.md in sync.
 - LAYOUT POLICY (owner decision 2026-07-24): screens use absolute pixel
   coordinates and STAY that way — do not convert to flex/grid or introduce
-  layout constants; the screens are hardware-verified as-is. Revisit only
-  if a second panel size ever becomes a target.
+  layout constants; the screens are hardware-verified as-is. **Revisited
+  2026-07-31**: a second panel size did become a target (the 5.0" board
+  below) — the policy itself didn't change, each board just gets its own
+  set of absolute-pixel constants (see "Board switch"), never a shared
+  dynamic layout.
 - LVGL KEYBOARD LAW (cost an invisible-keyboard regression): lv_keyboard
   self-aligns BOTTOM_MID at creation, so lv_obj_set_pos() coordinates become
   OFFSETS from that anchor — the keyboard sat 16 px past the screen bottom
@@ -121,6 +157,126 @@ partition table keeps the nvs partition); `esptool erase-flash` clears it.
   "keyboard too low" feedback). Dock keyboards with lv_obj_align(...,
   LV_ALIGN_BOTTOM_MID, 0, 0); setup screen has SCROLLABLE cleared so focus
   changes can never shift the layout again.
+- SELF-REFERENCE LAW (cost a live "CANCEL does nothing" debug session,
+  found 2026-08-01): `uiSetupOpen()`/`uiCtlOpen()` capture "the screen to
+  return to" via `s_prevScr = lv_scr_act()`. Called while THAT screen is
+  already active (e.g. the serial `'U'`/`'C'` debug commands sent twice in
+  a row without navigating away in between) it captures itself, and
+  CANCEL/SAVE/CLOSE's `lv_scr_load(s_prevScr)` becomes a no-op — indistin-
+  guishable from the button doing nothing at all. Both now guard with
+  `if (lv_scr_act() != s_scr) s_prevScr = lv_scr_act();`. If a button ever
+  again "does nothing," check this before suspecting touch/hardware.
+
+## Hardware (ELECROW CrowPanel Advance 5.0", board rev V1.2, SKU DISO2050A)
+— second install, added 2026-07-31
+
+800x480 IPS panel, own Victron GX (not yet commissioned — see "Board
+switch" for where its config lives). Same ESP32-S3-WROOM-1-N16R8 chip as
+the 3.5" board (16 MB flash, 8 MB octal PSRAM) — but almost everything else
+about the hardware layer differs. All facts below verified against
+ELECROW's vendor repo (`Elecrow-RD/CrowPanel-Advance-5-HMI-ESP32-S3-AI-Powered-IPS-Touch-Screen-800x480`,
+`example/V1.2_and_V1.3/Arduino/lesson-03/BigInch_LVGL/`) and the owner's
+photo of the physical board silkscreen (SKU + "V1.2" printed on the PCB),
+not guessed.
+
+- **Display**: ST7262 RGB-parallel TFT (not SPI) — 20 GPIOs: 16 data lines
+  (D0-D15) + HSYNC(40)/VSYNC(41)/PCLK(39)/H-Enable(42). Landscape-native, no
+  `offset_rotation` trick needed (unlike the 3.5"'s ILI9488). LovyanGFX
+  `Bus_RGB`/`Panel_RGB` (already present in the vendored 1.2.26 copy, no
+  library changes needed). Flush uses `gfx.pushImageDMA()` between a
+  conditional `endWrite()`/no `setAddrWindow`, not the SPI panel's
+  `setAddrWindow`+`writePixels` — see `DarksidePWR.ino`'s `dispFlush()`.
+- **Touch**: GT911, same physical I2C pins as the 3.5" (SDA 15 / SCL 16,
+  shared bus) but address **0x5D** (not 0x14). No INT/RST wired
+  (`pin_int=-1`/`pin_rst=-1`) — already poll-based via `gfx.getTouch()`,
+  same as the 3.5" build.
+- **Backlight — no LEDC PWM pin available** (GPIO 38, the 3.5" board's
+  backlight pin, is RGB data line B4 here). Controlled by an onboard
+  supervisor MCU at **I2C address 0x30**: single-byte command, 0 =
+  brightest, 245 = off (linear, inverted vs. a percent — see
+  `backlight.cpp`'s `BOARD_CROWPANEL_50` branch). Bring-up needs a
+  detect/handshake loop over `Wire` (same 15/16 bus as touch) that MUST run
+  before LovyanGFX's own touch I2C init claims the port — this is why
+  `backlightInit()` runs before `gfx.init()` in `DarksidePWR.ino`, for both
+  boards now (harmless reorder on the 3.5").
+- **USB is a WCH UART bridge, not native CDC — confirmed live** (plugged
+  into a Mac and inspected via `system_profiler`/`ioreg`): vendor
+  `0x1a86` (QinHeng/WCH), product `0x7522`, USB class `0xFF`
+  (vendor-specific) — not Espressif's `0x303a` native-CDC ID the 3.5" board
+  reports. Matches the silkscreen (`IO43-TX0`/`IO44-RX0` routed to the USB
+  connector). **Needs a driver**: macOS has no built-in driver for a
+  vendor-specific USB class — install + approve WCH's `CH34xVCPDriver`
+  (System Settings → General → Login Items & Extensions → Driver
+  Extensions) before anything can see the port. Confirmed enumeration once
+  approved: `/dev/cu.wchusbserial*` (NOT `cu.usbmodem*`) — `build.sh`'s
+  port glob for board `50` matches this.
+- **Beeper**: a dedicated BUZZER footprint is confirmed present on the
+  physical board (silkscreened next to the I2C-OUT header, its own driver
+  transistor) — but its GPIO is not silkscreened and wasn't in the fetched
+  vendor example code. **TODO, unverified**: `beeper.cpp`'s
+  `BOARD_CROWPANEL_50` branch ships with `BEEPER_PIN_50 = -1` (chime
+  disabled, safe no-op) rather than guessing a pin that could collide with
+  an already-claimed RGB/I2C/mic line. Override `BEEPER_PIN_50` once the
+  real pin is confirmed.
+- **Present but unused**: PDM-style mic (IO19 CLK / IO20 DATA — explains
+  the vendor bring-up's otherwise-mysterious `pinMode(19, OUTPUT)`, held
+  low at boot same idea as the 3.5"'s amp CTRL pin), I2S speaker amp
+  (IO4/IO5/IO6), a battery-backed RTC at I2C address 0x51 (CR1220 cell, same
+  bus as touch/backlight — genuinely new capability vs. the 3.5" board, not
+  wired up). A "Function Select" DIP switch (S0/S1) multiplexes IO19/IO20
+  between mic+TF-card mode and other modes (e.g. the optional pluggable
+  wireless module) — leave at factory default.
+
+## Board switch (compile-time)
+
+One repo, one macro: `BOARD_CROWPANEL_50`, set via `build.sh`'s `50`
+argument (`--build-property build.extra_flags=-DBOARD_CROWPANEL_50`).
+Undefined = the 3.5" truck build, unchanged. Two splitting patterns:
+
+- **Vendored/config headers** (`LovyanGFX_Driver.h`, `config.h`): tiny
+  `#if defined(BOARD_CROWPANEL_50) #include ..._50.h #else ..._35.h #endif`
+  selectors. `LovyanGFX_Driver_35.h`/`_50.h` are ELECROW's lesson-03
+  configs, unmodified, for their respective boards. `config_35.h` is the
+  truck's committed install config (unchanged content, just renamed).
+  `config_50.h` is the second install's device roster — Victron unit IDs
+  are placeholders (0) until that GX is commissioned; discover them with
+  the serial `'V'` sweep per SETUP.md and fill in (or override from
+  secrets.h). `GX_SOLAR_UNITS`/`GX_SOLAR_LABELS` is a new **plural** define
+  (both boards now use it — `config_35.h`'s single MPPT is `{1}`), mirroring
+  the existing `GX_TEMP_UNITS`/`GX_TANK_UNITS` list pattern; `gx_poller`'s
+  `GxData::solarMode[]`/`solarModeOk[]` are arrays sized `kNumSolar` for the
+  same reason (the second install has two MPPT chargers, each independently
+  controllable on the CONTROL page).
+- **Implementation files** (`backlight.cpp`, `beeper.cpp`, `ui.cpp`,
+  `ui_control.cpp`): same filename, whole-file
+  `#if defined(BOARD_CROWPANEL_50) ... #else ... #endif` — two complete,
+  independent implementations behind the same header interface. Chosen over
+  `_35`/`_50`-suffixed files for these because it keeps a single build unit
+  per concern and git diffs obviously scoped. `ui_setup.cpp` is the one
+  exception: its Wi-Fi scan/save/cancel state machine is entirely
+  board-agnostic (no screen-coordinate dependence), so only `uiSetupBuild()`
+  itself is guarded — duplicating ~300 lines of identical, behavior-
+  sensitive logic (e.g. the password-preservation rule in `saveCb`) for two
+  boards would just be a drift risk with no benefit.
+- **`DarksidePWR.ino`**: can't be split (one sketch entry point) — small
+  `#if` regions for `kLcdW`/`kLcdH`, `dispFlush()`, and the gfx
+  init sequence (`gfx.init()+initDMA()+startWrite()` for RGB vs `gfx.begin()`
+  for SPI).
+- **UI redesign, not a rescale**: the 5.0" screens (`ui.cpp`,
+  `ui_control.cpp`, `ui_setup.cpp`) are genuinely different layouts for the
+  800x480 canvas — bigger SOC arc, a 3x2 tile grid that shows PV and ALT as
+  separate tiles (previously combined into one "POWER IN" number on the
+  smaller screen; both are still the same GX system-aggregate reads, just
+  no longer summed), one labeled ON/OFF row per solar charger on CONTROL.
+  Still no custom font — reuses the same montserrat 12/14/20/28/48 sizes
+  already enabled in `lv_conf.h`.
+- **Known open TODOs** (grep `BOARD_CROWPANEL_50`/`TODO` for exact spots):
+  buzzer GPIO, per-charger solarcharger PV-power register (`solarPvW` in
+  `gx_poller.h` — unit 100 reg 850 is the only solar-power register this
+  project has confirmed; per-charger needs checking against
+  `victronenergy/dbus_modbustcp`'s attributes.csv or live experimentation),
+  the `50` FQBN's `CDCOnBoot` value (untested against a real flash), and
+  every real Victron unit ID in `config_50.h`.
 
 ## Toolchain (pinned, vendored)
 
@@ -133,11 +289,18 @@ partition table keeps the nvs partition); `esptool erase-flash` clears it.
     a box; footer uses triple-space separators instead).
   - LovyanGFX **1.2.26** — DELIBERATE upgrade from vendor's 1.1.16, which
     does not compile against core 3.3.10/IDF 5.5 (i2c_periph_signal.module,
-    lcd_periph_signals errors). Same config API.
+    lcd_periph_signals errors). Same config API. Already vendors
+    `Bus_RGB`/`Panel_RGB` for esp32s3, used by the 5.0" board.
   - LovyanGFX's CJK font dirs (`src/lgfx/Fonts/IPA`, `Fonts/efont`) are
     hard-`#include`d by `lgfx_fonts.cpp` — they CANNOT be trimmed.
-- FQBN: `esp32:esp32:esp32s3:FlashSize=16M,PSRAM=opi,CDCOnBoot=cdc,PartitionScheme=app3M_fat9M_16MB`.
-- Dual full-frame LVGL buffers in PSRAM (vendor lesson pattern).
+- FQBN: `esp32:esp32:esp32s3:FlashSize=16M,PSRAM=opi,CDCOnBoot=cdc,PartitionScheme=app3M_fat9M_16MB`
+  for the 3.5" board (`CDCOnBoot=cdc` = native USB). The 5.0" board's FQBN
+  in `build.sh` uses `CDCOnBoot=default` instead — it has no native-CDC USB
+  wiring (see its Hardware section) — untested against a real flash yet.
+- Dual full-frame LVGL buffers in PSRAM (vendor lesson pattern). On the
+  5.0" board this is ~1.5 MB (800x480x2Bx2 buffers) plus LovyanGFX's own
+  internal RGB frame buffer (~0.75 MB) — comfortably inside the 8 MB octal
+  PSRAM budget, not a concern.
 
 ## The Victron system (data source)
 
@@ -253,7 +416,8 @@ MultiPlus mode segmented buttons (OFF needs a second confirming tap — it
 kills AC loads), shore-limit stepper (5 A steps, 5-50), GX relay toggles,
 DVCC charge-limit stepper (10 A steps, 10-100 then NO LIMIT), alternator
 ON/OFF (noted "needs newer GX firmware" when reg 4119 answers exception),
-solar ON/OFF (SmartSolar /Mode reg 774 on GX_SOLAR_UNIT; ext-control may
+solar ON/OFF (SmartSolar /Mode reg 774, one row per unit in `GX_SOLAR_UNITS`
+— a list now, not a single unit, see "Board switch"; ext-control may
 override — read-back shows truth). Six rows, 44 px pitch, 36 px chips. WRITE LAW: writes queue via gxWrite() to the poller task (FC6,
 same framing/tri-state as reads; never touch the socket from the UI), the
 task logs "[ctl] write ..." and immediately re-polls (queued commands
@@ -261,9 +425,11 @@ EXPIRE after 10 s — a tap during an outage must not fire on reconnect),
 and every widget
 highlights GX READ-BACK state — a rejected or overridden write (DMC/BMS can
 own the shore limit; ext-control solar ignores /Mode) shows itself within a
-second. Telemetry: mp/sh/r1/r2/chg/sm/am fields. Serial 'V' sweeps units
-1-247 for solarcharger /Mode (774) and 200-247 for vebus /Mode (33) to
-find GX_SOLAR_UNIT / GX_VEBUS_UNIT on a new install.
+second. Telemetry: mp/sh/r1/r2/chg/sm/am fields (sm is slash-joined per
+solar unit, e.g. `sm=1/4`). Serial 'V' sweeps units 1-247 for solarcharger
+/Mode (774) and 200-247 for vebus /Mode (33) to find the `GX_SOLAR_UNITS`
+entries / `GX_VEBUS_UNIT` on a new install — it already reports every
+matching unit, so multiple solar chargers show up in one sweep.
 
 Setup screen (ui_setup.cpp): async Wi-Fi scan (strongest-first, deduped, top
 12) into a tappable list; SSID + password + GX-target textareas (password
@@ -287,6 +453,33 @@ re-joins immediately (main screen's dot shows progress); CANCEL (top right,
 kRing chip — kTile chips are invisible on the physical panel) discards.
 Telemetry: `[setup] scan started` / `scan done: N seen, M listed` /
 `saved ssid=..., joining` (the password is never logged).
+
+NIGHT MODE (`night_mode.h`/`.cpp`, **5" board only**, added 2026-08-01):
+that install is wall-mounted in a sleeping area, so the display blanks on a
+schedule (NIGHT toggle + SLEEP/WAKE steppers, 30-min steps, on the setup
+screen below the network list — same immediate-apply-and-persist rule as
+UNITS/BRIGHT, no SAVE needed). NTP-timed (`configTzTime("MST7", ...)`,
+Arizona Mountain — no DST), **not** the onboard RTC (I2C 0x51): that chip's
+register map was never identified from vendor material, so implementing a
+driver for it would be guessing at unverified hardware, which this project
+doesn't do. Fails safe — the schedule is inert (`enabled=false` default)
+until turned on, and does nothing even when on until `time(nullptr)` clears
+a ~2023 sanity floor (i.e. the clock has actually synced at least once).
+Blanking is real backlight-off (`backlightBlank()`/`backlightWake()` in
+backlight.h — bypasses the normal `kBacklightMinPct` floor on purpose,
+unlike every other caller of the backlight API), not an LVGL overlay or a
+change to the display bus, so it can't reintroduce the tearing issue fixed
+earlier. A touch while blanked wakes it for 30s (any touch resets the
+countdown) but is **not** forwarded to LVGL as a click — `DarksidePWR.ino`'s
+`touchRead()` checks `nightModeTick()` first and swallows that one touch,
+so waking the screen in the dark can't also fire whatever button happens to
+be underneath. Re-blanks after 30s of no touches, but only while still
+inside the sleep window — if the scheduled wake time arrives first, it just
+stays on. NVS keys (namespace `darkside`): `night.en`, `night.sm`,
+`night.wm` (sleep/wake as minutes-since-midnight, not separate H/M keys).
+On the 3.5" board `night_mode.cpp` is a no-op stub (`nightModeTick()`
+always returns false) — zero behavior change there, and no `#ifdef` needed
+at any call site.
 
 ## Parked / next ideas
 

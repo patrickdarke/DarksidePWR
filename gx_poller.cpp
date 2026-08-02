@@ -180,14 +180,20 @@ bool pollOnce(GxData& out) {
   out.dvccOk = (r == kRegOk);
   if (out.dvccOk) out.dvccLimA = s16(cv[0]);
 
-  // SmartSolar /Mode — a unit of 0 means "not configured" (compile-time
-  // constant, the branch folds away). An ext-control MPPT may accept the
-  // read but bounce writes; read-back truth shows that on the page.
-  if (GX_SOLAR_UNIT != 0) {
-    r = sockOk ? mbRead(GX_SOLAR_UNIT, 774, 1, cv) : kRegFault;
+  // SmartSolar chargers — same per-device non-fatal pattern as temps/tanks
+  // (an empty GX_SOLAR_UNITS list means this loop just doesn't run). An
+  // ext-control MPPT may accept the read but bounce writes; read-back truth
+  // shows that on the control page regardless.
+  for (int i = 0; i < GxData::kNumSolar; i++) {
+    uint16_t sv[1];
+    r = sockOk ? mbRead(kGxSolarUnits[i], 774, 1, sv) : kRegFault;
     if (r == kRegFault) sockOk = false;
-    out.solarModeOk = (r == kRegOk);
-    if (out.solarModeOk) out.solarMode = cv[0];
+    out.solarModeOk[i] = (r == kRegOk);
+    if (out.solarModeOk[i]) out.solarMode[i] = sv[0];
+
+    // Per-charger PV power: register NOT verified yet (see GxData comment)
+    // — left not-ok so the UI shows '--' instead of a fabricated number.
+    out.solarPvOk[i] = false;
   }
 
   // Orion /Mode (4119) only exists on newer GX firmware — one clean
