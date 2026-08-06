@@ -91,6 +91,21 @@ bool ctlRow(RegResult r, uint32_t& okMs) {
   return okMs != 0 && millis() - okMs < kCtlStickyMs;
 }
 
+// Round budget: a slow-but-answering GX must not stretch one round past
+// the link-dot staleness window (10 s) or the write-queue TTL (10 s) — a
+// tap queued at round start has to survive to the drain. Past the budget
+// the remaining non-fatal reads are skipped as faults for THIS round (the
+// sticky/'--' paths absorb it) but the socket is healthy and is NOT
+// cycled; the next round catches up.
+constexpr uint32_t kRoundBudgetMs = 7000;
+
+bool roundBudgetOk(uint32_t startMs, bool& budgetHit) {
+  if (budgetHit) return false;
+  if (millis() - startMs < kRoundBudgetMs) return true;
+  budgetHit = true;
+  return false;
+}
+
 bool pollOnce(GxData& out) {
   if (WiFi.status() != WL_CONNECTED) { drop(); out.valid = false; return false; }
   if (!mbConnected()) {
@@ -121,12 +136,15 @@ bool pollOnce(GxData& out) {
   // rest not-ok, and cycle the socket below. The system values above are
   // good; the poll succeeds.
   bool sockOk = true;
+  const uint32_t roundStartMs = millis();
+  bool budgetHit = false;
 
   // GX system name — once per connection, non-fatal. dbus_modbustcp packs
   // strings two ASCII chars per register, high byte first.
   if (!s_haveSysName) {
     uint16_t nm[8];
-    const RegResult rn = mbRead(100, 5700, 8, nm);
+    const RegResult rn = roundBudgetOk(roundStartMs, budgetHit)
+                              ? mbRead(100, 5700, 8, nm) : kRegFault;
     if (rn == kRegOk) {
       for (int i = 0; i < 8; i++) {
         out.sysName[2 * i] = (char)(nm[i] >> 8);
@@ -150,7 +168,7 @@ bool pollOnce(GxData& out) {
   // Orion XS output (engine off/asleep or re-numbered unit -> 0 W).
   uint16_t alt[2];
   out.altW = 0;
-  RegResult r = sockOk ? mbRead(GX_ALT_UNIT, 4100, 2, alt) : kRegFault;
+  RegResult r = (sockOk && roundBudgetOk(roundStartMs, budgetHit)) ? mbRead(GX_ALT_UNIT, 4100, 2, alt) : kRegFault;
   if (r == kRegOk) {
     const float altV = alt[0] / 100.0f;
     const float altA = s16(alt[1]) / 10.0f;
@@ -162,7 +180,7 @@ bool pollOnce(GxData& out) {
   // Temperatures (tags sleep, batteries die).
   for (int i = 0; i < GxData::kNumTemps; i++) {
     uint16_t t[1];
-    r = sockOk ? mbRead(kGxTempUnits[i], 3304, 1, t) : kRegFault;
+    r = (sockOk && roundBudgetOk(roundStartMs, budgetHit)) ? mbRead(kGxTempUnits[i], 3304, 1, t) : kRegFault;
     if (r == kRegFault) sockOk = false;
     out.tempOk[i] = (r == kRegOk);
     if (out.tempOk[i]) {
@@ -173,17 +191,17 @@ bool pollOnce(GxData& out) {
 
   // Controls state for the CONTROL page — same per-read non-fatal rules.
   uint16_t cv[2];
-  r = sockOk ? mbRead(GX_VEBUS_UNIT, 33, 1, cv) : kRegFault;
+  r = (sockOk && roundBudgetOk(roundStartMs, budgetHit)) ? mbRead(GX_VEBUS_UNIT, 33, 1, cv) : kRegFault;
   if (r == kRegFault) sockOk = false;
   out.mpModeOk = ctlRow(r, s_ctlFresh.mp);
   if (r == kRegOk) out.mpMode = cv[0];
 
-  r = sockOk ? mbRead(GX_VEBUS_UNIT, 22, 1, cv) : kRegFault;
+  r = (sockOk && roundBudgetOk(roundStartMs, budgetHit)) ? mbRead(GX_VEBUS_UNIT, 22, 1, cv) : kRegFault;
   if (r == kRegFault) sockOk = false;
   out.shoreLimOk = ctlRow(r, s_ctlFresh.shore);
   if (r == kRegOk) out.shoreLimA = s16(cv[0]) / 10.0f;
 
-  r = sockOk ? mbRead(100, 806, 2, cv) : kRegFault;
+  r = (sockOk && roundBudgetOk(roundStartMs, budgetHit)) ? mbRead(100, 806, 2, cv) : kRegFault;
   if (r == kRegFault) sockOk = false;
   out.relayOk = ctlRow(r, s_ctlFresh.relay);
   if (r == kRegOk) {
@@ -191,7 +209,7 @@ bool pollOnce(GxData& out) {
     out.relayClosed[1] = (cv[1] == 1);
   }
 
-  r = sockOk ? mbRead(100, 2705, 1, cv) : kRegFault;
+  r = (sockOk && roundBudgetOk(roundStartMs, budgetHit)) ? mbRead(100, 2705, 1, cv) : kRegFault;
   if (r == kRegFault) sockOk = false;
   out.dvccOk = ctlRow(r, s_ctlFresh.dvcc);
   if (r == kRegOk) out.dvccLimA = s16(cv[0]);
@@ -200,7 +218,7 @@ bool pollOnce(GxData& out) {
   // constant, the branch folds away). An ext-control MPPT may accept the
   // read but bounce writes; read-back truth shows that on the page.
   if (GX_SOLAR_UNIT != 0) {
-    r = sockOk ? mbRead(GX_SOLAR_UNIT, 774, 1, cv) : kRegFault;
+    r = (sockOk && roundBudgetOk(roundStartMs, budgetHit)) ? mbRead(GX_SOLAR_UNIT, 774, 1, cv) : kRegFault;
     if (r == kRegFault) sockOk = false;
     out.solarModeOk = ctlRow(r, s_ctlFresh.solar);
     if (r == kRegOk) out.solarMode = cv[0];
@@ -208,7 +226,7 @@ bool pollOnce(GxData& out) {
 
   // Orion /Mode (4119) only exists on newer GX firmware — one clean
   // exception per connection marks it unsupported until reconnect.
-  if (s_altModeSupported && sockOk) {
+  if (s_altModeSupported && sockOk && roundBudgetOk(roundStartMs, budgetHit)) {
     r = mbRead(GX_ALT_UNIT, 4119, 1, cv);
     if (r == kRegFault) {
       sockOk = false;
@@ -234,18 +252,24 @@ bool pollOnce(GxData& out) {
   // Tank levels — same treatment.
   for (int i = 0; i < GxData::kNumTanks; i++) {
     uint16_t t[1];
-    r = sockOk ? mbRead(kGxTankUnits[i], 3004, 1, t) : kRegFault;
+    r = (sockOk && roundBudgetOk(roundStartMs, budgetHit)) ? mbRead(kGxTankUnits[i], 3004, 1, t) : kRegFault;
     if (r == kRegFault) sockOk = false;
     out.tankOk[i] = (r == kRegOk);
     if (out.tankOk[i]) out.tankPct[i] = t[0] / 10.0f;
   }
 
   if (!sockOk) {
-    // No backoff: the GX just answered the system reads, so the box is up —
-    // a fresh connection next poll beats 3 s of amber dot.
-    Serial.println("[gx] sensor read fault, cycling connection");
-    mbStop();
-    s_nextAttemptMs = millis();
+    if (budgetHit) {
+      // Budget skips masquerade as faults above; the socket itself is
+      // fine — keep it and catch up next round.
+      Serial.println("[gx] round budget hit, remaining reads deferred");
+    } else {
+      // No backoff: the GX just answered the system reads, so the box is
+      // up — a fresh connection next poll beats 3 s of amber dot.
+      Serial.println("[gx] sensor read fault, cycling connection");
+      mbStop();
+      s_nextAttemptMs = millis();
+    }
   }
 
   out.battV = batt[0] / 10.0f;

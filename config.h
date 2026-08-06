@@ -67,3 +67,40 @@
 #ifndef UI_TITLE
 #define UI_TITLE ""
 #endif
+
+// Wall clock (top-right of the power screen): SNTP over the same Wi-Fi.
+// POSIX TZ string — default US Eastern with DST rules; change it when the
+// truck relocates half a continent (no auto-timezone on purpose).
+#ifndef CLOCK_TZ
+#define CLOCK_TZ "EST5EDT,M3.2.0,M11.1.0"
+#endif
+#ifndef CLOCK_NTP1
+#define CLOCK_NTP1 "pool.ntp.org"
+#endif
+#ifndef CLOCK_NTP2
+#define CLOCK_NTP2 "time.nist.gov"
+#endif
+
+// Battery tile title (upper-left tile) — installation-flavored, so it is
+// overridable per build like UI_TITLE ("HOUSE" for the truck, e.g.
+// "NG BATT" for the camper).
+#ifndef UI_BATT_LABEL
+#define UI_BATT_LABEL "HOUSE"
+#endif
+
+// 24 h history storage backends (history.cpp): FFat snapshots ride the
+// partition scheme's 9 MB FAT area; the TF card gets a daily CSV. SD pins
+// are the TF slot's own HSPI bus, from ELECROW lesson-04 (V1.2-V1.4).
+#define HIST_ENABLE_STORAGE 1
+#ifndef HIST_SD_SCK
+#define HIST_SD_SCK 5
+#endif
+#ifndef HIST_SD_MISO
+#define HIST_SD_MISO 4
+#endif
+#ifndef HIST_SD_MOSI
+#define HIST_SD_MOSI 6
+#endif
+#ifndef HIST_SD_CS
+#define HIST_SD_CS 7
+#endif

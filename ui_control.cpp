@@ -2,6 +2,7 @@
 
 #include <lvgl.h>
 #include <stdio.h>
+#include <string.h>
 
 #include "ui_theme.h"
 #include "ui_widgets.h"
@@ -43,11 +44,20 @@ void sendCmd(uint8_t unit, uint16_t reg, uint16_t val) {
                                   : "queue full - command not sent");
 }
 
+void setIfChanged(lv_obj_t* l, const char* txt) {
+  if (strcmp(lv_label_get_text(l), txt) != 0) lv_label_set_text(l, txt);
+}
+
 void styleChip(lv_obj_t* b, bool active, bool known) {
-  lv_obj_set_style_bg_color(b, lv_color_hex(active ? kTeal : kTile), 0);
+  // Compare before set: LVGL style writes invalidate even when the value
+  // is unchanged, and this runs for every chip on every poll.
+  const lv_color_t bg = lv_color_hex(active ? kTeal : kTile);
   lv_obj_t* l = lv_obj_get_child(b, 0);
-  lv_obj_set_style_text_color(
-      l, lv_color_hex(active ? kBg : (known ? kText : kMuted)), 0);
+  const lv_color_t fg = lv_color_hex(active ? kBg : (known ? kText : kMuted));
+  if (lv_obj_get_style_bg_color(b, LV_PART_MAIN).full != bg.full)
+    lv_obj_set_style_bg_color(b, bg, 0);
+  if (lv_obj_get_style_text_color(l, LV_PART_MAIN).full != fg.full)
+    lv_obj_set_style_text_color(l, fg, 0);
 }
 
 void disarmOff() {
@@ -241,9 +251,9 @@ void uiCtlUpdate(const GxData& d) {
 
   if (d.shoreLimOk) {
     snprintf(buf, sizeof buf, "%.1f A", d.shoreLimA);
-    lv_label_set_text(s_shoreVal, buf);
+    setIfChanged(s_shoreVal, buf);
   } else {
-    lv_label_set_text(s_shoreVal, "--");
+    setIfChanged(s_shoreVal, "--");
   }
 
   for (int i = 0; i < 2; i++) {
@@ -251,24 +261,24 @@ void uiCtlUpdate(const GxData& d) {
       snprintf(buf, sizeof buf, "R%d  %s", i + 1,
                d.relayClosed[i] ? "CLOSED" : "OPEN");
       lv_obj_t* l = lv_obj_get_child(s_relayBtn[i], 0);
-      lv_label_set_text(l, buf);
+      setIfChanged(l, buf);
       styleChip(s_relayBtn[i], d.relayClosed[i], true);
     } else {
       lv_obj_t* l = lv_obj_get_child(s_relayBtn[i], 0);
       snprintf(buf, sizeof buf, "R%d  --", i + 1);
-      lv_label_set_text(l, buf);
+      setIfChanged(l, buf);
       styleChip(s_relayBtn[i], false, false);
     }
   }
 
   if (d.dvccOk) {
-    if (d.dvccLimA < 0) lv_label_set_text(s_dvccVal, "NO LIMIT");
+    if (d.dvccLimA < 0) setIfChanged(s_dvccVal, "NO LIMIT");
     else {
       snprintf(buf, sizeof buf, "%d A", d.dvccLimA);
-      lv_label_set_text(s_dvccVal, buf);
+      setIfChanged(s_dvccVal, buf);
     }
   } else {
-    lv_label_set_text(s_dvccVal, "--");
+    setIfChanged(s_dvccVal, "--");
   }
 
   if (d.solarModeOk) {

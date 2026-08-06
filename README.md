@@ -77,8 +77,10 @@ a touch setup screen (gear button: Wi-Fi scanner/picker, on-screen keyboard,
 credentials in NVS, brightness slider with PWM dimming), a CONTROL page
 (bolt button: MultiPlus mode + shore limit, GX relays, DVCC charge limit,
 solar charger on/off,
-alternator on/off — with read-back state and a confirm step on OFF), and a
-charge-complete chirp. Ideas next: sensor-detail second page
-(humidity/pressure, Orion detail), low-SOC alert.
+alternator on/off — with read-back state and a confirm step on OFF),
+**tap-any-tile 24 h history charts** (per-minute recording; FFat snapshots
+survive reboots, and an optional TF card gets a daily per-minute CSV), an
+SNTP wall clock, and a charge-complete chirp. Ideas next: sensor-detail
+second page (humidity/pressure, Orion detail), low-SOC alert.
 
 ![Control page](docs/img/control-screen.png)

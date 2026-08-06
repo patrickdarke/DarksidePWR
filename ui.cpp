@@ -4,8 +4,11 @@
 #include <ctype.h>
 #include <stdio.h>
 #include <string.h>
+#include <time.h>
 
+#include "history.h"
 #include "ui_control.h"
+#include "ui_history.h"
 #include "ui_setup.h"
 #include "ui_theme.h"
 #include "ui_widgets.h"
@@ -20,6 +23,7 @@
 namespace {
 
 lv_obj_t* s_hdrLbl = nullptr;
+lv_obj_t* s_clockLbl = nullptr;
 lv_obj_t* s_arc = nullptr;
 lv_obj_t* s_socLbl = nullptr;
 lv_obj_t* s_stateLbl = nullptr;
@@ -36,7 +40,36 @@ static_assert(sizeof(kTankNames) / sizeof(kTankNames[0]) == GxData::kNumTanks,
               "GX_TANK_LABELS length must match GX_TANK_UNITS");
 constexpr float kTankLowPct = 20.0f;  // below this the level renders RED
 
-lv_obj_t* mkTile(lv_obj_t* parent, int x, int y, const char* title, uint32_t valColor) {
+// Wall clock, top right (SNTP via configTzTime in the .ino). Blank until
+// the first sync lands (unsynced ESP time starts in 1970).
+void clockTimerCb(lv_timer_t*) {
+  static char last[24] = "";
+  char buf[24] = "";
+  time_t now = time(nullptr);
+  struct tm t;
+  localtime_r(&now, &t);
+  if (t.tm_year + 1900 >= 2020) {
+    static const char* kDays[] = {"SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"};
+    int h = t.tm_hour % 12;
+    if (h == 0) h = 12;
+    snprintf(buf, sizeof buf, "%s %d/%d  %d:%02d %s", kDays[t.tm_wday],
+             t.tm_mon + 1, t.tm_mday, h, t.tm_min, t.tm_hour < 12 ? "AM" : "PM");
+  }
+  if (strcmp(buf, last) != 0) {
+    strcpy(last, buf);
+    lv_label_set_text(s_clockLbl, buf);
+  }
+}
+
+// Set a label only when the text actually changed — steady-state polls
+// mostly repeat values, and every set_text costs a heap realloc + region
+// invalidate + redraw + flush even when identical.
+void setIfChanged(lv_obj_t* l, const char* txt) {
+  if (strcmp(lv_label_get_text(l), txt) != 0) lv_label_set_text(l, txt);
+}
+
+lv_obj_t* mkTile(lv_obj_t* parent, int x, int y, const char* title, uint32_t valColor,
+                 int series) {
   lv_obj_t* t = lv_obj_create(parent);
   lv_obj_remove_style_all(t);
   lv_obj_set_style_bg_color(t, lv_color_hex(kTile), 0);
@@ -44,6 +77,11 @@ lv_obj_t* mkTile(lv_obj_t* parent, int x, int y, const char* title, uint32_t val
   lv_obj_set_style_radius(t, 8, 0);
   lv_obj_set_size(t, 128, 92);
   lv_obj_set_pos(t, x, y);
+  // Tap a tile -> that value's 24 h chart.
+  lv_obj_add_flag(t, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_add_event_cb(
+      t, [](lv_event_t* e) { uiHistOpen((int)(uintptr_t)lv_event_get_user_data(e)); },
+      LV_EVENT_CLICKED, (void*)(uintptr_t)series);
 
   lv_obj_t* lbl = lv_label_create(t);
   lv_obj_set_style_text_font(lbl, &lv_font_montserrat_12, 0);
@@ -72,6 +110,15 @@ void uiBuild() {
   lv_obj_set_style_text_color(s_hdrLbl, lv_color_hex(kMuted), 0);
   lv_label_set_text(s_hdrLbl, UI_TITLE[0] ? UI_TITLE : "PWR MONITOR");
   lv_obj_set_pos(s_hdrLbl, 16, 10);
+
+  s_clockLbl = lv_label_create(scr);
+  lv_obj_set_style_text_font(s_clockLbl, &lv_font_montserrat_18, 0);
+  lv_obj_set_style_text_color(s_clockLbl, lv_color_hex(kMuted), 0);
+  lv_obj_set_style_text_align(s_clockLbl, LV_TEXT_ALIGN_RIGHT, 0);
+  lv_obj_set_width(s_clockLbl, 190);
+  lv_label_set_text(s_clockLbl, "");
+  lv_obj_set_pos(s_clockLbl, 256, 8);
+  lv_timer_create(clockTimerCb, 1000, nullptr);
 
   s_dot = lv_obj_create(scr);
   lv_obj_remove_style_all(s_dot);
@@ -113,10 +160,10 @@ void uiBuild() {
   lv_obj_set_pos(s_stateLbl, 18, 166);
 
   // 2x2 tiles, right half
-  s_tileVal[0] = mkTile(scr, 216, 46, "HOUSE", kText);
-  s_tileVal[1] = mkTile(scr, 348, 46, "CURRENT", kAmber);
-  s_tileVal[2] = mkTile(scr, 216, 142, "POWER IN", kGreen);
-  s_tileVal[3] = mkTile(scr, 348, 142, "AC LOADS", kBlue);
+  s_tileVal[0] = mkTile(scr, 216, 46, UI_BATT_LABEL, kText, kHistV);
+  s_tileVal[1] = mkTile(scr, 348, 46, "CURRENT", kAmber, kHistA);
+  s_tileVal[2] = mkTile(scr, 216, 142, "POWER IN", kGreen, kHistInW);
+  s_tileVal[3] = mkTile(scr, 348, 142, "AC LOADS", kBlue, kHistAcW);
 
   // Footer block: rule + temps / tanks / power lines
   lv_obj_t* rule = lv_obj_create(scr);
@@ -180,20 +227,20 @@ void uiUpdate(const GxData& d) {
 
   lv_arc_set_value(s_arc, d.soc);
   snprintf(buf, sizeof buf, "%d%%", d.soc);
-  lv_label_set_text(s_socLbl, buf);
+  setIfChanged(s_socLbl, buf);
 
   const char* st = (d.battState == 1) ? "CHARGING"
                    : (d.battState == 2) ? "DISCHARGING" : "IDLE";
-  lv_label_set_text(s_stateLbl, st);
+  setIfChanged(s_stateLbl, st);
 
   snprintf(buf, sizeof buf, "%.2f V", d.battV);
-  lv_label_set_text(s_tileVal[0], buf);
+  setIfChanged(s_tileVal[0], buf);
   snprintf(buf, sizeof buf, "%+.1f A", d.battA);
-  lv_label_set_text(s_tileVal[1], buf);
+  setIfChanged(s_tileVal[1], buf);
   snprintf(buf, sizeof buf, "%d W", d.inW);
-  lv_label_set_text(s_tileVal[2], buf);
+  setIfChanged(s_tileVal[2], buf);
   snprintf(buf, sizeof buf, "%d W", d.acW);
-  lv_label_set_text(s_tileVal[3], buf);
+  setIfChanged(s_tileVal[3], buf);
 
   // Temps line: muted names, bright values (LVGL recolor markup); a sensor
   // that didn't answer shows "--" rather than a stale number.
@@ -208,7 +255,7 @@ void uiUpdate(const GxData& d) {
       off += snprintf(temps + off, sizeof(temps) - off,
                       "%s#8c96aa %s# #8c96aa --#", i ? "   " : "", kTempNames[i]);
   }
-  lv_label_set_text(s_tempLbl, temps);
+  setIfChanged(s_tempLbl, temps);
 
   // Tanks line: level goes RED below kTankLowPct; dead sensors show '--'.
   char tanks[192];
@@ -224,13 +271,13 @@ void uiUpdate(const GxData& d) {
                       "%s#8c96aa %s# #8c96aa --#", i ? "   " : "", kTankNames[i]);
     }
   }
-  lv_label_set_text(s_tankLbl, tanks);
+  setIfChanged(s_tankLbl, tanks);
 
   // Triple-space separators like the lines above — the middle dot (U+00B7)
   // is outside LVGL's montserrat glyph range and renders as a box.
   snprintf(buf, sizeof buf, "PV %d W   ALT %d W   DC %d W   NET %+d W",
            d.pvW, d.altW, d.dcW, d.battW);
-  lv_label_set_text(s_footLbl, buf);
+  setIfChanged(s_footLbl, buf);
 }
 
 void uiSetLink(int state) {

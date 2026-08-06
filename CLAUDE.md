@@ -191,7 +191,7 @@ alternator, 3004 for tanks).
 | 100 | settings | 5700 | system name, string[8], 2 ASCII/reg hi-first — in NO released firmware yet: added to dbus_modbustcp 2026-03-17 (4e566cf3, which also added per-device CustomName regs, e.g. tank 3010, temp 3320); v3.75 (current latest) answers exception 2, verified live 2026-07-24 | text |
 | GX_VEBUS_UNIT | vebus (MultiPlus) | 33 W | /Mode: 1 chg-only, 2 inv-only, 3 on, 4 off | 1 |
 | GX_VEBUS_UNIT | vebus | 22 W | /Ac/ActiveIn/CurrentLimit (shore limit) | ÷10 A |
-| 100 | system | 806/807 W | GX relay 0/1 state (0 open, 1 closed; relay function must be Manual) | 1 |
+| 100 | system | 806/807 W | GX relay 0/1 state (0 open, 1 closed; relay function must be Manual). PROVEN 2026-07-26 (independent client, P4 debugging): with any non-Manual function the GX ACKS the FC6 write and silently discards it — read-back stays put. This truck's relay 1 is NOT Manual, so relays were never actually actuated from a panel; the Function setting itself has no Modbus register. | 1 |
 | 100 | settings | 2705 W | DVCC max charge current, -1 = no limit | A |
 | 239 | alternator | 4119 W | Orion /Mode 1 on / 4 off — WORKS on v3.75 (verified live 2026-07-24, unlike 5700); still probed once per connection for older firmware | 1 |
 | 1 | solarcharger (VE.Can MPPT) | 774 W | /Mode 1 on / 4 off. VE.Can instances are >247 and reachable ONLY via the static unitid2di map — unit 1 on this system, found by the 'V' sweep; never assume unit = VRM instance for VE.Can devices. VERIFIED live 2026-07-24: /Mode writes STICK even with the MPPT under DVCC/ext control (off->on round trip by owner) | 1 |
@@ -310,3 +310,37 @@ Telemetry: `[setup] scan started` / `scan done: N seen, M listed` /
   Ruuvis, Orion detail (starter V, state), MultiPlus detail.
 - Low-SOC alert. (LEDC dimming is DONE — setup-screen slider; auto day/night
   dimming could build on it.)
+
+### 24 h history + charts (added 2026-08-05, uncommitted)
+
+Tap any tile -> full-screen 24 h chart (ui_history.cpp: 1440 minute
+buckets drawn as 288 five-minute points, MIN/MAX/NOW line, window
+start/now times, per-series color + minimum-span clamp so flat overnight
+lines don't zoom to noise). Recorder (history.cpp): PSRAM ring keyed by
+epoch minute — records only once SNTP has set the clock; NAN = gap;
+histRecord folds each poller sample on the UI task, no IO there ever.
+Storage task (core 0): FFat snapshot /hist.bin every 15 min on the
+partition scheme's 9 MB ffat area (restored at boot, slots older than 24 h
+dropped; boot reload deferred until the clock is valid) + daily CSV
+/YYYY-MM-DD.csv on the TF card, one line per minute with header. SD =
+lesson-04 pins, OWN HSPI bus: SCK 5 / MISO 4 / MOSI 6 / CS 7, run at
+40 MHz (vendor lesson uses 80; margin chosen deliberately). Card and FFat
+both strictly optional — mount failure logs once, history stays RAM-only.
+A yanked card marks sd=no and drops lines (counted); serial 'H' prints
+ram/ffat/sd status. Worst-case power loss costs <=15 min of chart history
+(snapshot cadence) and nothing of the CSV already written.
+
+### Performance/stability pass (2026-08-05, uncommitted)
+
+- Labels/chips only touch LVGL when the VALUE changed (setIfChanged +
+  compare-before-set styleChip) — steady-state polls repeat values, and
+  every redundant set_text cost a heap realloc + invalidate + SPI flush.
+  Keep the pattern for any new widget updated per-poll.
+- Poll ROUND budget (gx_poller, kRoundBudgetMs 7000): a slow-but-answering
+  GX at the 1500 ms deadlines could stretch one round past the link-dot
+  window and the 10 s write TTL (taps silently expiring). Past budget,
+  remaining non-fatal reads skip AS faults (sticky/'--' absorb it) but the
+  healthy socket is NOT cycled — telemetry line: "round budget hit".
+- history storage: FFat snapshot now writes /hist.tmp then renames
+  (power-cut-proof); a pulled SD card retries mount every 60 s (CSV
+  resumes on re-insert); storage task stack 8 KB; 'H' prints stackfree.

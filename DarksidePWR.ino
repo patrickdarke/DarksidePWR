@@ -16,9 +16,11 @@
 #include "beeper.h"
 #include "gx_poller.h"
 #include "gx_settings.h"
+#include "history.h"
 #include "secrets.h"
 #include "ui.h"
 #include "ui_control.h"
+#include "ui_history.h"
 #include "ui_setup.h"
 
 namespace {
@@ -171,9 +173,12 @@ void setup() {
   indevDrv.read_cb = touchRead;
   lv_indev_drv_register(&indevDrv);
 
+  histInit();  // PSRAM minute ring + storage task (FFat snapshot, SD CSV)
+
   uiBuild();
   uiSetupBuild();
   uiCtlBuild();
+  uiHistBuild();
   uiSetLink(0);
 
   // Wi-Fi credentials: NVS (written by the on-device setup screen) wins;
@@ -189,6 +194,10 @@ void setup() {
     }
     prefs.end();
   }
+
+  // Wall clock: SNTP kicks in whenever Wi-Fi comes up; the TZ string
+  // (with DST rules) lives in config.h.
+  configTzTime(CLOCK_TZ, CLOCK_NTP1, CLOCK_NTP2);
 
   gxStart();  // GX poller task on core 0 — the LVGL loop never blocks on it
 
@@ -221,6 +230,7 @@ void loop() {
     else if (c == 'C') uiCtlOpen();
     else if (c == 'B') beeperChirp();
     else if (c == 'V') gxRequestSweep();
+    else if (c == 'H') histStatus();
     else if (c == 'K') uiSetupShowKeyboard();
     else if (c == 'D') uiCtlDemoArmOff();
     else if (c == 'M') {
@@ -261,6 +271,7 @@ void loop() {
     if (s_gx.valid) {
       uiUpdate(s_gx);
       uiCtlUpdate(s_gx);
+      histRecord(s_gx);
 
       // Full-charge chirp state machine (see the comment at the top).
       if (s_gx.battState == 1) {

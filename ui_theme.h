@@ -4,7 +4,7 @@
 // DSODash design-language palette, shared by every screen (ui.cpp power
 // screen, ui_setup.cpp Wi-Fi setup). Header constants so each screen keeps
 // the short kName spelling.
-constexpr uint32_t kBg = 0x0C1018;
+constexpr uint32_t kBg = 0x000000;
 constexpr uint32_t kTile = 0x111826;
 constexpr uint32_t kRing = 0x1D2634;
 constexpr uint32_t kText = 0xE8F0FA;
