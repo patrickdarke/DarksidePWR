@@ -40,6 +40,10 @@ inline float* cell(int series, int slot) { return &s_val[series * kHistMinutes +
 void lock() { xSemaphoreTake(s_mux, portMAX_DELAY); }
 void unlock() { xSemaphoreGive(s_mux); }
 
+// SD bus/volume mutex, shared with sound.cpp via histSdTake/histSdGive.
+// Lives outside the storage #ifdef so the API links on every build.
+SemaphoreHandle_t s_sdMux = nullptr;
+
 #ifdef HIST_ENABLE_STORAGE
 // ---- storage task state --------------------------------------------------
 struct CsvJob {
@@ -130,14 +134,36 @@ void drainCsv() {
   CsvJob j;
   while (xQueueReceive(s_csvQ, &j, 0) == pdTRUE) {
     if (!s_sdOk) { s_csvDropped++; continue; }
+    // May wait a few seconds behind an MP3 the sound player is streaming —
+    // the queue (depth 8) rides that out.
+    xSemaphoreTake(s_sdMux, portMAX_DELAY);
     const bool fresh = !SD.exists(j.fname);
     File f = SD.open(j.fname, FILE_APPEND);
-    if (!f) { s_sdOk = false; s_csvDropped++; continue; }  // card yanked?
+    if (!f) {
+      xSemaphoreGive(s_sdMux);
+      s_sdOk = false;  // card yanked?
+      s_csvDropped++;
+      continue;
+    }
     if (fresh) f.print("time,batt_v,batt_a,in_w,ac_w,soc\n");
     f.print(j.line);
     f.close();
+    xSemaphoreGive(s_sdMux);
     s_csvWritten++;
   }
+}
+
+// Mount (or re-mount) the card under the SD mutex. On success, make sure
+// /sounds exists — that is where the sound player and the SOUNDS screen
+// look for MP3s, and creating it here means a fresh card shows the folder
+// the first time the owner mounts it on a computer.
+bool mountSd(bool remount) {
+  xSemaphoreTake(s_sdMux, portMAX_DELAY);
+  if (remount) SD.end();
+  const bool ok = SD.begin(HIST_SD_CS, s_sdSpi, 40000000);
+  if (ok && !SD.exists("/sounds")) SD.mkdir("/sounds");
+  xSemaphoreGive(s_sdMux);
+  return ok;
 }
 
 void storageTask(void*) {
@@ -146,7 +172,7 @@ void storageTask(void*) {
   Serial.printf("[hist] ffat %s\n", s_ffatOk ? "mounted" : "unavailable (RAM-only persistence)");
   s_sdSpi.begin(HIST_SD_SCK, HIST_SD_MISO, HIST_SD_MOSI);
   // Vendor lesson runs this bus at 80 MHz; 40 MHz buys margin for a truck.
-  s_sdOk = SD.begin(HIST_SD_CS, s_sdSpi, 40000000);
+  s_sdOk = mountSd(false);
   Serial.printf("[hist] sd %s\n", s_sdOk ? "mounted (daily CSV on)" : "not present (CSV off)");
   s_nextSnapshotMs = millis() + kSnapshotEveryMs;
   uint32_t nextSdRetryMs = millis() + 60000;
@@ -156,8 +182,7 @@ void storageTask(void*) {
     // truck; CSV resumes when one is back.
     if (!s_sdOk && (int32_t)(millis() - nextSdRetryMs) >= 0) {
       nextSdRetryMs = millis() + 60000;
-      SD.end();
-      s_sdOk = SD.begin(HIST_SD_CS, s_sdSpi, 40000000);
+      s_sdOk = mountSd(true);
       if (s_sdOk) Serial.println("[hist] sd card back, CSV resumed");
     }
     drainCsv();
@@ -212,6 +237,7 @@ void finalizeMinute() {
 
 void histInit() {
   s_mux = xSemaphoreCreateMutex();
+  s_sdMux = xSemaphoreCreateMutex();
   const size_t valBytes = sizeof(float) * kHistCount * kHistMinutes;
   s_val = (float*)heap_caps_malloc(valBytes, MALLOC_CAP_SPIRAM);
   s_slotMin = (uint32_t*)heap_caps_calloc(kHistMinutes, sizeof(uint32_t), MALLOC_CAP_SPIRAM);
@@ -284,4 +310,21 @@ void histStatus() {
   Serial.printf("[hist] ram=%d/%d min (no storage backend on this board)\n",
                 filled, kHistMinutes);
 #endif
+}
+
+bool histSdReady() {
+#ifdef HIST_ENABLE_STORAGE
+  return s_sdOk;
+#else
+  return false;
+#endif
+}
+
+bool histSdTake(uint32_t maxWaitMs) {
+  if (!s_sdMux) return false;
+  return xSemaphoreTake(s_sdMux, pdMS_TO_TICKS(maxWaitMs)) == pdTRUE;
+}
+
+void histSdGive() {
+  if (s_sdMux) xSemaphoreGive(s_sdMux);
 }

@@ -18,3 +18,24 @@ void gxSetTarget(const char* addr);  // "" reverts to the config.h default
 // "[setup] gx target set..."), and copy the current target for resolving.
 bool gxTargetConsumePending();
 void gxTargetCopy(String& host, bool& overridden);
+
+// UI labels: every installation-flavored string (header title, tile names,
+// temp sensor names, tank names) as an NVS-overridable slot. Slot layout is
+// the fixed slots below, then GX_TEMP_UNITS-many temp names, then
+// GX_TANK_UNITS-many tank names. Labels are UI-task-only (built, edited,
+// and rendered there) — no locking. An empty override reverts to the
+// config.h/secrets.h compile-time default; kGxLblTitle's default "" keeps
+// meaning "auto: follow the GX system name".
+enum : int {
+  kGxLblTitle = 0,
+  kGxLblBatt,      // battery tile + its chart series
+  kGxLblCurrent,
+  kGxLblPowerIn,
+  kGxLblAcLoads,
+  kGxLblFixedCount
+};
+int gxLabelCount();
+const char* gxLabel(int i);                       // effective text
+const char* gxLabelDefault(int i);                // compile-time default
+void gxLabelCaption(int i, char* out, int cap);   // "TITLE", "TEMP 1", ...
+void gxSetLabel(int i, const char* txt);          // persist; "" = revert

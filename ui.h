@@ -7,3 +7,8 @@
 void uiBuild();
 void uiUpdate(const GxData& d);
 void uiSetLink(int state);
+
+// Re-render the header title and tile names after gxSetLabel changes
+// (called by the LABELS screen's SAVE; temps/tanks lines and chart titles
+// pick the new names up on their own next refresh).
+void uiLabelsApply();

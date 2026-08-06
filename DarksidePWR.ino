@@ -18,10 +18,14 @@
 #include "gx_settings.h"
 #include "history.h"
 #include "secrets.h"
+#include "sound.h"
 #include "ui.h"
 #include "ui_control.h"
 #include "ui_history.h"
+#include "ui_labels.h"
 #include "ui_setup.h"
+#include "ui_sounds.h"
+#include "web_upload.h"
 
 namespace {
 
@@ -44,13 +48,22 @@ uint32_t s_lastLoopMs = 0;
 uint32_t s_maxGapMs = 0;
 uint32_t s_nextGapReportMs = 0;
 
-// Full-charge chime: arm after >= 30 consecutive charging samples (~30 s,
-// so absorption flapping and passing clouds can't arm it), fire once when
-// charging stops with SOC at/above the threshold, re-arm on the next
-// charge session.
+// Full-charge alert: arm after >= 30 consecutive charging samples (~30 s).
+// Announce the moment SOC reads 100% while still charging, or — if 100 is
+// never displayed — when charging STAYS stopped for kStopRunSamples with
+// SOC at/above kChimeSocPct (a one-sample debounce turned every absorption
+// current dip into a "session end"). ONE announcement per fill: the
+// s_alertFired latch holds until SOC drains below kRearmSocPct — clearing
+// it on the next non-charging sample (the original scheme) made the
+// 99-100% absorption hover re-announce after every state flap, the
+// owner-reported "keeps firing" bug of 2026-08-06.
 constexpr int kChimeSocPct = 99;
+constexpr int kRearmSocPct = 97;    // a real drain below this re-arms
+constexpr int kStopRunSamples = 60; // stop must persist ~1 min to count
 int s_chargeRun = 0;
+int s_stopRun = 0;
 bool s_chimeArmed = false;
+bool s_alertFired = false;  // latched: this fill has been announced
 
 void dispFlush(lv_disp_drv_t* drv, const lv_area_t* area, lv_color_t* px) {
   const uint32_t w = area->x2 - area->x1 + 1;
@@ -175,10 +188,16 @@ void setup() {
 
   histInit();  // PSRAM minute ring + storage task (FFat snapshot, SD CSV)
 
+  gxSettingsLoad();  // before uiBuild: tiles render NVS label overrides at
+                     // build time (idempotent; gxStart's call stays as the
+                     // safety net for adopter sketches)
+  soundInit();       // NVS sound choices, before the SOUNDS screen builds
   uiBuild();
   uiSetupBuild();
   uiCtlBuild();
   uiHistBuild();
+  uiLabelsBuild();
+  uiSoundsBuild();
   uiSetLink(0);
 
   // Wi-Fi credentials: NVS (written by the on-device setup screen) wins;
@@ -212,13 +231,18 @@ void setup() {
     Serial.printf("[pwr] wifi connecting to %s (%s)\n",
                   ssid.c_str(), fromNvs ? "nvs" : "secrets.h");
   }
+
+  // Boot sound (SOUNDS screen; default silent). Async — an SD choice
+  // waits inside the player task for the storage task's card mount.
+  soundPlayBoot();
 }
 
 void loop() {
   lv_timer_handler();
 
   // Debug serial commands: 'S' = screenshot dump, 'U' = open setup screen,
-  // 'C' = open control page, 'B' = play the charge-complete chirps,
+  // 'C' = open control page, 'B' = play the charge sound (whatever the
+  // SOUNDS screen assigned), 'N' = open the SOUNDS screen,
   // 'V' = sweep unit ids for the vebus /Mode register (new installs),
   // 'K' = setup screen with keyboard up, 'D' = arm the MULTI OFF confirm
   // (the last two exist for capturing documentation screenshots),
@@ -228,7 +252,8 @@ void loop() {
     if (c == 'S') dumpScreen();
     else if (c == 'U') uiSetupOpen();
     else if (c == 'C') uiCtlOpen();
-    else if (c == 'B') beeperChirp();
+    else if (c == 'B') soundPlayCharge();
+    else if (c == 'N') uiSoundsOpen();
     else if (c == 'V') gxRequestSweep();
     else if (c == 'H') histStatus();
     else if (c == 'K') uiSetupShowKeyboard();
@@ -244,9 +269,13 @@ void loop() {
 
   const bool wifiUp = WiFi.status() == WL_CONNECTED;
   if (wifiUp && !s_mdnsUp) {
-    s_mdnsUp = MDNS.begin("darksidepwr");
-    Serial.printf("[pwr] wifi up %s, mdns %s\n",
-                  WiFi.localIP().toString().c_str(), s_mdnsUp ? "ok" : "FAILED");
+    s_mdnsUp = MDNS.begin(MDNS_HOST);
+    if (s_mdnsUp) MDNS.addService("http", "tcp", 80);
+    webUploadStart();  // idempotent; the sound-upload page rides plain IP
+                       // too, so it starts even when mDNS fails
+    Serial.printf("[pwr] wifi up %s, mdns %s (%s.local)\n",
+                  WiFi.localIP().toString().c_str(), s_mdnsUp ? "ok" : "FAILED",
+                  MDNS_HOST);
   }
 
   // Track the worst LVGL-loop stall; this is the number the net-task
@@ -273,16 +302,32 @@ void loop() {
       uiCtlUpdate(s_gx);
       histRecord(s_gx);
 
-      // Full-charge chirp state machine (see the comment at the top).
+      // Full-charge alert state machine (see the comment at the top).
+      if (s_alertFired && s_gx.soc < kRearmSocPct)
+        s_alertFired = false;  // genuine drain since the announcement
       if (s_gx.battState == 1) {
-        if (++s_chargeRun >= 30) s_chimeArmed = true;
-      } else {
-        if (s_chimeArmed && s_gx.soc >= kChimeSocPct) {
-          Serial.printf("[beep] charge complete at %d%%, chime\n", s_gx.soc);
-          beeperChirp();
+        s_stopRun = 0;
+        if (++s_chargeRun >= 30 && !s_alertFired) s_chimeArmed = true;
+        if (s_chimeArmed && s_gx.soc >= 100) {
+          Serial.println("[beep] battery at 100%, alert");
+          soundPlayCharge();
+          s_chimeArmed = false;
+          s_alertFired = true;
         }
-        s_chimeArmed = false;
-        s_chargeRun = 0;
+      } else {
+        s_chargeRun = 0;  // arming needs consecutive charging samples
+        if (s_chimeArmed) {
+          if (s_gx.soc < kChimeSocPct) {
+            s_chimeArmed = false;  // ended below threshold: nothing to say
+            s_stopRun = 0;
+          } else if (++s_stopRun >= kStopRunSamples) {
+            Serial.printf("[beep] charge complete at %d%%, alert\n", s_gx.soc);
+            soundPlayCharge();
+            s_chimeArmed = false;
+            s_alertFired = true;
+            s_stopRun = 0;
+          }
+        }
       }
       // One line per poll carrying every displayed value; sensor sections
       // size themselves to the secrets.h lists (missing sensors: -99 / -1).

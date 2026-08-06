@@ -25,3 +25,12 @@ void histRecord(const GxData& d);  // fold one sample (UI task; cheap, no IO)
 // Returns the epoch minute of the newest slot (0 = nothing recorded yet).
 uint32_t histGet(int series, float* out);
 void histStatus();                 // serial 'H' one-line status
+
+// SD card sharing: this module owns the card (mount + minute retry), but
+// the sound player (sound.cpp) streams MP3s from it too. Every SD.* access
+// — here and there — sits between histSdTake/histSdGive: FatFS volume
+// state is not task-safe on its own. Boards without storage: never-ready
+// stubs.
+bool histSdReady();                  // card mounted right now?
+bool histSdTake(uint32_t maxWaitMs); // false = timed out (0 = try-lock)
+void histSdGive();

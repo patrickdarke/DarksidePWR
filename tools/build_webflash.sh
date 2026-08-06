@@ -5,8 +5,9 @@
 #
 # The web image is NEUTRAL: it builds against secrets.h.example (placeholder
 # Wi-Fi — the on-device setup screen provisions the panel), with config.h
-# committed defaults for everything else. Any local secrets.h is moved
-# aside for the build and restored afterwards, untouched.
+# committed defaults for everything else. Any local secrets.h AND any local
+# voice.h (personal charge-complete clip — adopters get the chirp fallback)
+# are moved aside for the build and restored afterwards, untouched.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
 
@@ -17,9 +18,11 @@ OUT="$HERE/docs/firmware"
 restore() {
   rm -f "$HERE/secrets.h"
   [ -f "$HERE/secrets.h.webflash-bak" ] && mv "$HERE/secrets.h.webflash-bak" "$HERE/secrets.h"
+  [ -f "$HERE/voice.h.webflash-bak" ] && mv "$HERE/voice.h.webflash-bak" "$HERE/voice.h"
   return 0
 }
 [ -f "$HERE/secrets.h" ] && mv "$HERE/secrets.h" "$HERE/secrets.h.webflash-bak"
+[ -f "$HERE/voice.h" ] && mv "$HERE/voice.h" "$HERE/voice.h.webflash-bak"
 trap restore EXIT
 cp "$HERE/secrets.h.example" "$HERE/secrets.h"
 

@@ -1,6 +1,10 @@
 # Real Wi-Fi credentials — copy secrets.h.example to secrets.h and fill in.
 secrets.h
 
+# Personal charge-complete voice clip (tools/make_voice.sh) — local like
+# secrets.h; builds without it fall back to the chirp alert.
+voice.h
+
 # Build output
 build/
 *.bin

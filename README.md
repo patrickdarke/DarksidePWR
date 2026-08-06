@@ -52,9 +52,9 @@ Addressing: `venus.local` via mDNS, falling back to the pinned IP in
 
 One-time: `cp secrets.h.example secrets.h`. Editing it is largely optional —
 the gear button (lower right) opens an on-device setup screen for Wi-Fi
-(scan, pick, type the password on-screen), the GX address, °F/°C, and
-brightness; everything saves to NVS and overrides the config.h defaults at
-boot. secrets.h (gitignored) holds only Wi-Fi credentials.
+(scan, pick, type the password on-screen), the GX address, °F/°C,
+brightness, and every UI label (title, tile names, sensor and tank names);
+everything saves to NVS and overrides the config.h defaults at boot. secrets.h (gitignored) holds only Wi-Fi credentials.
 
 ```
 ./build.sh          # compile
@@ -63,7 +63,8 @@ boot. secrets.h (gitignored) holds only Wi-Fi credentials.
 
 `lib/` vendors the display stack: LVGL 8.3.11 (ELECROW's copy + their
 `lv_conf.h`) and LovyanGFX 1.2.26 — deliberately newer than the vendor's
-1.1.16, which does not compile against esp32 core 3.3.10 / IDF 5.5.
+1.1.16, which does not compile against esp32 core 3.3.10 / IDF 5.5 —
+plus minimp3 (public-domain MP3 decoder) for the SD-card sound player.
 `LovyanGFX_Driver.h` is their lesson-03 panel config for board revisions
 V1.2–V1.4, unmodified.
 Vendor source: github.com/Elecrow-RD/CrowPanel-Advance-3.5-HMI-ESP32-S3-AI-Powered-IPS-Touch-Screen-480x320
@@ -74,13 +75,20 @@ Working: Wi-Fi + 1 Hz Modbus poll + the power screen — SOC arc, house V,
 battery A, POWER IN (PV + Orion XS alternator), AC loads, Ruuvi temps line,
 Mopeka LPG tanks line (red when low), PV/ALT/DC/NET footer, link dot — plus
 a touch setup screen (gear button: Wi-Fi scanner/picker, on-screen keyboard,
-credentials in NVS, brightness slider with PWM dimming), a CONTROL page
+credentials in NVS, brightness slider with PWM dimming, editable UI labels
+— rename the title, tiles, sensors, and tanks on-device), a CONTROL page
 (bolt button: MultiPlus mode + shore limit, GX relays, DVCC charge limit,
 solar charger on/off,
 alternator on/off — with read-back state and a confirm step on OFF),
 **tap-any-tile 24 h history charts** (per-minute recording; FFat snapshots
 survive reboots, and an optional TF card gets a daily per-minute CSV), an
-SNTP wall clock, and a charge-complete chirp. Ideas next: sensor-detail
+SNTP wall clock (alternating 4 s with the panel's IP — the upload page's
+address), and per-event sounds: a SOUNDS setup screen assigns what
+plays at boot and at full charge — chirp, a baked-in voice line
+(`tools/make_voice.sh`; stays local like secrets.h), or any MP3 on the SD
+card (decoded on-device), uploaded from any browser via the panel's own
+page at `http://<panel-ip>/` or dropped into `/sounds` on the card.
+Ideas next: sensor-detail
 second page (humidity/pressure, Orion detail), low-SOC alert.
 
 ![Control page](docs/img/control-screen.png)

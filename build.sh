@@ -14,12 +14,14 @@ FQBN="esp32:esp32:esp32s3:FlashSize=16M,PSRAM=opi,CDCOnBoot=cdc,PartitionScheme=
 arduino-cli compile --fqbn "$FQBN" --libraries "$HERE/lib" "$HERE"
 
 if [ "${1:-}" = "flash" ]; then
-  # macOS enumerates the panel as cu.usbmodem*, Linux as ttyACM*.
+  # macOS enumerates the panel's native USB as cu.usbmodem* (Linux: ttyACM*);
+  # the board's UART header port shows as cu.wchusbserial* (CH340) and works
+  # for flashing too, so it is the fallback when no native port is present.
   # `|| true`: under set -euo pipefail, ls failing on an unmatched glob
   # (always the case for the other OS's pattern) would kill the script at
   # this assignment — silently, before the error message below could print.
-  PORT="$(ls /dev/cu.usbmodem* /dev/ttyACM* 2>/dev/null | head -1 || true)"
-  [ -n "$PORT" ] || { echo "✗ no panel port found (cu.usbmodem*/ttyACM*)"; exit 1; }
+  PORT="$(ls /dev/cu.usbmodem* /dev/ttyACM* /dev/cu.wchusbserial* 2>/dev/null | head -1 || true)"
+  [ -n "$PORT" ] || { echo "✗ no panel port found (cu.usbmodem*/ttyACM*/cu.wchusbserial*)"; exit 1; }
   arduino-cli upload --fqbn "$FQBN" -p "$PORT" "$HERE"
   echo "==> flashed $PORT"
 fi

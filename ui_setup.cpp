@@ -7,6 +7,8 @@
 #include "backlight.h"
 #include "gx_settings.h"  // runtime GX target + temperature unit
 #include "secrets.h"      // compile-time fallback creds for rejoin-on-CANCEL
+#include "ui_labels.h"
+#include "ui_sounds.h"
 #include "ui_theme.h"
 #include "ui_widgets.h"
 
@@ -140,6 +142,18 @@ void briCb(lv_event_t* e) {
   } else {            // LV_EVENT_RELEASED
     backlightSave(v);
   }
+}
+
+void labelsCb(lv_event_t*) {
+  hideKeyboard();
+  lv_timer_pause(s_scanTimer);  // scan result would land on a dead list
+  uiLabelsOpen();               // CANCEL/SAVE there returns to this screen
+}
+
+void soundsCb(lv_event_t*) {
+  hideKeyboard();
+  lv_timer_pause(s_scanTimer);
+  uiSoundsOpen();  // BACK there returns to this screen
 }
 
 void unitCb(lv_event_t*) {
@@ -292,7 +306,7 @@ void uiSetupBuild() {
   s_briSlider = lv_slider_create(s_scr);
   lv_slider_set_range(s_briSlider, kBacklightMinPct, 100);
   lv_slider_set_value(s_briSlider, backlightGet(), LV_ANIM_OFF);
-  lv_obj_set_size(s_briSlider, 290, 14);
+  lv_obj_set_size(s_briSlider, 160, 14);  // shares the row with LABELS+SOUNDS
   lv_obj_set_pos(s_briSlider, 76, 176);
   lv_obj_set_ext_click_area(s_briSlider, 12);  // finger-sized touch target
   lv_obj_set_style_bg_color(s_briSlider, lv_color_hex(kRing), LV_PART_MAIN);
@@ -307,7 +321,11 @@ void uiSetupBuild() {
   lv_obj_set_style_text_font(s_briLbl, &lv_font_montserrat_12, 0);
   lv_obj_set_style_text_color(s_briLbl, lv_color_hex(kText), 0);
   lv_label_set_text_fmt(s_briLbl, "%d%%", backlightGet());
-  lv_obj_set_pos(s_briLbl, 384, 178);
+  lv_obj_set_pos(s_briLbl, 244, 178);
+
+  // Sub-screens: editable UI labels, and the boot/charge sound picker.
+  mkBtn(288, 166, 84, 32, "LABELS", kRing, kText, labelsCb);
+  mkBtn(380, 166, 84, 32, "SOUNDS", kRing, kText, soundsCb);
 
   s_list = lv_list_create(s_scr);
   lv_obj_set_size(s_list, 448, 114);

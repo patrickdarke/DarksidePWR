@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <time.h>
 
+#include "gx_settings.h"
 #include "history.h"
 #include "ui_theme.h"
 #include "ui_widgets.h"
@@ -18,7 +19,6 @@ constexpr int kPoints = 288;
 constexpr int kBucket = kHistMinutes / kPoints;  // 5 minutes per drawn point
 
 struct SeriesMeta {
-  const char* name;
   const char* unit;
   uint32_t color;
   float scale;     // float -> chart int
@@ -26,12 +26,24 @@ struct SeriesMeta {
   float minSpan;   // minimum y-span so flat lines don't zoom to noise
 };
 const SeriesMeta kMeta[kHistCount] = {
-    {UI_BATT_LABEL, "V", kText, 100.0f, 2, 0.4f},
-    {"CURRENT", "A", kAmber, 10.0f, 1, 4.0f},
-    {"POWER IN", "W", kGreen, 1.0f, 0, 100.0f},
-    {"AC LOADS", "W", kBlue, 1.0f, 0, 100.0f},
-    {"SOC", "%", kTeal, 1.0f, 0, 10.0f},
+    {"V", kText, 100.0f, 2, 0.4f},
+    {"A", kAmber, 10.0f, 1, 4.0f},
+    {"W", kGreen, 1.0f, 0, 100.0f},
+    {"W", kBlue, 1.0f, 0, 100.0f},
+    {"%", kTeal, 1.0f, 0, 10.0f},
 };
+
+// Series names come from the label slots so on-device renames show here
+// too (read at refill time, not baked in). SOC has no main-screen label.
+const char* seriesName(int s) {
+  switch (s) {
+    case kHistV:   return gxLabel(kGxLblBatt);
+    case kHistA:   return gxLabel(kGxLblCurrent);
+    case kHistInW: return gxLabel(kGxLblPowerIn);
+    case kHistAcW: return gxLabel(kGxLblAcLoads);
+  }
+  return "SOC";
+}
 
 lv_obj_t* s_scr = nullptr;
 lv_obj_t* s_prevScr = nullptr;
@@ -77,7 +89,7 @@ void refill() {
     if (!isnan(mins[i])) { nowVal = mins[i]; break; }
 
   char buf[96];
-  snprintf(buf, sizeof buf, "%s  #8c96aa 24H %s#", m.name, m.unit);
+  snprintf(buf, sizeof buf, "%s  #8c96aa 24H %s#", seriesName(s_series), m.unit);
   lv_label_set_text(s_title, buf);
   lv_obj_set_style_line_color(s_chart, lv_color_hex(m.color), LV_PART_ITEMS);
 

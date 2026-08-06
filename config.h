@@ -62,6 +62,15 @@
 #define TEMPS_IN_F 1
 #endif
 
+// mDNS hostname — the panel answers at http://<name>.local (sound upload
+// page). Give every panel on one network its own name: the truck's
+// original unit owns the default, so a second build overrides this in
+// secrets.h (mDNS does not cross subnets — the SOUNDS screen shows the
+// plain-IP URL that always works).
+#ifndef MDNS_HOST
+#define MDNS_HOST "darksidepwr"
+#endif
+
 // Display title (upper left). "" = auto-pull the GX system name (needs a
 // Venus release newer than 3.75); set a string to pin it.
 #ifndef UI_TITLE

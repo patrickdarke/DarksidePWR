@@ -1,11 +1,13 @@
 #include "ui.h"
 
+#include <WiFi.h>
 #include <lvgl.h>
 #include <ctype.h>
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
 
+#include "gx_settings.h"
 #include "history.h"
 #include "ui_control.h"
 #include "ui_history.h"
@@ -13,9 +15,10 @@
 #include "ui_theme.h"
 #include "ui_widgets.h"
 
-// Sensor labels and UI_TITLE come from config.h (secrets.h may override),
-// included via ui.h -> gx_poller.h. Title rule: UI_TITLE wins; "" = show
-// the GX system name as soon as a poll delivers it.
+// Every installation-flavored string renders through gxLabel() — config.h/
+// secrets.h supply the defaults, the setup screen's LABELS page overrides
+// via NVS. Title rule: a non-empty title label wins; "" = show the GX
+// system name as soon as a poll delivers it.
 
 // Darkside PWR — 480x320 power screen in the DSODash design language:
 // SOC arc on the left, four metric tiles on the right, totals bar below,
@@ -29,22 +32,24 @@ lv_obj_t* s_socLbl = nullptr;
 lv_obj_t* s_stateLbl = nullptr;
 lv_obj_t* s_dot = nullptr;
 lv_obj_t* s_tileVal[4] = {nullptr};   // house V, battery A, solar W, AC W
+lv_obj_t* s_tileTitle[4] = {nullptr}; // their name labels, for live renames
 lv_obj_t* s_tempLbl = nullptr;
 lv_obj_t* s_tankLbl = nullptr;
 lv_obj_t* s_footLbl = nullptr;
-const char* kTempNames[] = GX_TEMP_LABELS;
-const char* kTankNames[] = GX_TANK_LABELS;
-static_assert(sizeof(kTempNames) / sizeof(kTempNames[0]) == GxData::kNumTemps,
-              "GX_TEMP_LABELS length must match GX_TEMP_UNITS");
-static_assert(sizeof(kTankNames) / sizeof(kTankNames[0]) == GxData::kNumTanks,
-              "GX_TANK_LABELS length must match GX_TANK_UNITS");
+char s_sysShown[17] = "";             // auto-title cache (GX system name)
+// Label slot indexes for the sensor names (fixed slots come first).
+constexpr int kTempLblBase = kGxLblFixedCount;
+constexpr int kTankLblBase = kGxLblFixedCount + GxData::kNumTemps;
 constexpr float kTankLowPct = 20.0f;  // below this the level renders RED
 
-// Wall clock, top right (SNTP via configTzTime in the .ino). Blank until
-// the first sync lands (unsynced ESP time starts in 1970).
+// Top-right rotator: the wall clock and the panel's IP trade places every
+// 4 s (the IP is the door to the sound-upload page). The 1 Hz timer makes
+// each phase exactly four ticks. Clock is blank until the first SNTP sync
+// (unsynced ESP time starts in 1970), the IP while Wi-Fi is down —
+// whichever side is empty cedes its slot to the other.
 void clockTimerCb(lv_timer_t*) {
-  static char last[24] = "";
-  char buf[24] = "";
+  static char last[28] = "";
+  char clk[24] = "";
   time_t now = time(nullptr);
   struct tm t;
   localtime_r(&now, &t);
@@ -52,12 +57,18 @@ void clockTimerCb(lv_timer_t*) {
     static const char* kDays[] = {"SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"};
     int h = t.tm_hour % 12;
     if (h == 0) h = 12;
-    snprintf(buf, sizeof buf, "%s %d/%d  %d:%02d %s", kDays[t.tm_wday],
+    snprintf(clk, sizeof clk, "%s %d/%d  %d:%02d %s", kDays[t.tm_wday],
              t.tm_mon + 1, t.tm_mday, h, t.tm_min, t.tm_hour < 12 ? "AM" : "PM");
   }
-  if (strcmp(buf, last) != 0) {
-    strcpy(last, buf);
-    lv_label_set_text(s_clockLbl, buf);
+  char ip[20] = "";
+  if (WiFi.status() == WL_CONNECTED)
+    snprintf(ip, sizeof ip, "%s", WiFi.localIP().toString().c_str());
+
+  const bool ipTurn = (millis() / 4000) & 1;
+  const char* show = ipTurn ? (ip[0] ? ip : clk) : (clk[0] ? clk : ip);
+  if (strcmp(show, last) != 0) {
+    snprintf(last, sizeof last, "%s", show);
+    lv_label_set_text(s_clockLbl, show);
   }
 }
 
@@ -69,7 +80,7 @@ void setIfChanged(lv_obj_t* l, const char* txt) {
 }
 
 lv_obj_t* mkTile(lv_obj_t* parent, int x, int y, const char* title, uint32_t valColor,
-                 int series) {
+                 int series, lv_obj_t** titleOut) {
   lv_obj_t* t = lv_obj_create(parent);
   lv_obj_remove_style_all(t);
   lv_obj_set_style_bg_color(t, lv_color_hex(kTile), 0);
@@ -88,6 +99,7 @@ lv_obj_t* mkTile(lv_obj_t* parent, int x, int y, const char* title, uint32_t val
   lv_obj_set_style_text_color(lbl, lv_color_hex(kMuted), 0);
   lv_label_set_text(lbl, title);
   lv_obj_set_pos(lbl, 12, 10);
+  if (titleOut) *titleOut = lbl;
 
   lv_obj_t* val = lv_label_create(t);
   lv_obj_set_style_text_font(val, &lv_font_montserrat_28, 0);
@@ -108,7 +120,8 @@ void uiBuild() {
   s_hdrLbl = lv_label_create(scr);
   lv_obj_set_style_text_font(s_hdrLbl, &lv_font_montserrat_14, 0);
   lv_obj_set_style_text_color(s_hdrLbl, lv_color_hex(kMuted), 0);
-  lv_label_set_text(s_hdrLbl, UI_TITLE[0] ? UI_TITLE : "PWR MONITOR");
+  const char* title = gxLabel(kGxLblTitle);
+  lv_label_set_text(s_hdrLbl, title[0] ? title : "PWR MONITOR");
   lv_obj_set_pos(s_hdrLbl, 16, 10);
 
   s_clockLbl = lv_label_create(scr);
@@ -160,10 +173,10 @@ void uiBuild() {
   lv_obj_set_pos(s_stateLbl, 18, 166);
 
   // 2x2 tiles, right half
-  s_tileVal[0] = mkTile(scr, 216, 46, UI_BATT_LABEL, kText, kHistV);
-  s_tileVal[1] = mkTile(scr, 348, 46, "CURRENT", kAmber, kHistA);
-  s_tileVal[2] = mkTile(scr, 216, 142, "POWER IN", kGreen, kHistInW);
-  s_tileVal[3] = mkTile(scr, 348, 142, "AC LOADS", kBlue, kHistAcW);
+  s_tileVal[0] = mkTile(scr, 216, 46, gxLabel(kGxLblBatt), kText, kHistV, &s_tileTitle[0]);
+  s_tileVal[1] = mkTile(scr, 348, 46, gxLabel(kGxLblCurrent), kAmber, kHistA, &s_tileTitle[1]);
+  s_tileVal[2] = mkTile(scr, 216, 142, gxLabel(kGxLblPowerIn), kGreen, kHistInW, &s_tileTitle[2]);
+  s_tileVal[3] = mkTile(scr, 348, 142, gxLabel(kGxLblAcLoads), kBlue, kHistAcW, &s_tileTitle[3]);
 
   // Footer block: rule + temps / tanks / power lines
   lv_obj_t* rule = lv_obj_create(scr);
@@ -214,13 +227,12 @@ void uiUpdate(const GxData& d) {
   if (!d.valid) return;
   char buf[64];
 
-  // Auto title: follow the GX system name when no manual UI_TITLE is set.
-  if (UI_TITLE[0] == '\0' && d.sysNameOk) {
-    static char shown[17] = "";
-    if (strcmp(shown, d.sysName) != 0) {
-      strcpy(shown, d.sysName);
+  // Auto title: follow the GX system name when no title label is set.
+  if (gxLabel(kGxLblTitle)[0] == '\0' && d.sysNameOk) {
+    if (strcmp(s_sysShown, d.sysName) != 0) {
+      strcpy(s_sysShown, d.sysName);
       char up[17];
-      for (int i = 0; i < 17; i++) up[i] = (char)toupper((unsigned char)shown[i]);
+      for (int i = 0; i < 17; i++) up[i] = (char)toupper((unsigned char)s_sysShown[i]);
       lv_label_set_text(s_hdrLbl, up);
     }
   }
@@ -250,10 +262,11 @@ void uiUpdate(const GxData& d) {
     if (d.tempOk[i])
       off += snprintf(temps + off, sizeof(temps) - off,
                       "%s#8c96aa %s# #e8f0fa %.1f\xC2\xB0#",
-                      i ? "   " : "", kTempNames[i], d.temp[i]);
+                      i ? "   " : "", gxLabel(kTempLblBase + i), d.temp[i]);
     else
       off += snprintf(temps + off, sizeof(temps) - off,
-                      "%s#8c96aa %s# #8c96aa --#", i ? "   " : "", kTempNames[i]);
+                      "%s#8c96aa %s# #8c96aa --#", i ? "   " : "",
+                      gxLabel(kTempLblBase + i));
   }
   setIfChanged(s_tempLbl, temps);
 
@@ -265,10 +278,11 @@ void uiUpdate(const GxData& d) {
       const char* col = (d.tankPct[i] < kTankLowPct) ? "ff5050" : "e8f0fa";
       off += snprintf(tanks + off, sizeof(tanks) - off,
                       "%s#8c96aa %s# #%s %.0f%%#",
-                      i ? "   " : "", kTankNames[i], col, d.tankPct[i]);
+                      i ? "   " : "", gxLabel(kTankLblBase + i), col, d.tankPct[i]);
     } else {
       off += snprintf(tanks + off, sizeof(tanks) - off,
-                      "%s#8c96aa %s# #8c96aa --#", i ? "   " : "", kTankNames[i]);
+                      "%s#8c96aa %s# #8c96aa --#", i ? "   " : "",
+                      gxLabel(kTankLblBase + i));
     }
   }
   setIfChanged(s_tankLbl, tanks);
@@ -283,4 +297,14 @@ void uiUpdate(const GxData& d) {
 void uiSetLink(int state) {
   uint32_t c = (state >= 2) ? kGreen : (state == 1) ? kAmber : kRed;
   lv_obj_set_style_bg_color(s_dot, lv_color_hex(c), 0);
+}
+
+void uiLabelsApply() {
+  const char* title = gxLabel(kGxLblTitle);
+  lv_label_set_text(s_hdrLbl, title[0] ? title : "PWR MONITOR");
+  s_sysShown[0] = '\0';  // title cleared to auto: let the next poll repaint
+  static const int kTileSlot[4] = {kGxLblBatt, kGxLblCurrent, kGxLblPowerIn,
+                                   kGxLblAcLoads};
+  for (int i = 0; i < 4; i++)
+    if (s_tileTitle[i]) lv_label_set_text(s_tileTitle[i], gxLabel(kTileSlot[i]));
 }

@@ -58,14 +58,70 @@ partition table keeps the nvs partition); `esptool erase-flash` clears it.
     chirps play on a short task, never on the LVGL loop.
   - NS4168 I2S mono class-D amp → speaker: BCLK 13, LRC 11, SDATA 12,
     CTRL = IO21 (the vendor "pull 21 low" quirk is this pin; firmware
-    still parks it LOW). DEPRECATED for alerts 2026-07-24 — the piezo
-    replaced the I2S chime — but the path is verified working (ESP_I2S,
-    begin/end per sound; see git history) if music/voice is ever wanted.
+    still parks it LOW). Owned by **sound.cpp** (2026-08-06): the SOUNDS
+    setup sub-screen (ui_sounds.cpp) assigns a sound to the BOOT and
+    CHARGE events — "!off" / "!chirp" / "!voice" (baked-in clip) / any
+    MP3 in /sounds/ on the SD card. MP3s decode on the fly with vendored
+    lib/minimp3 (public domain/CC0 — the popular Arduino audio libs are
+    GPL-3 and would poison this MIT repo). Fallback chain on any failure:
+    SD file → baked-in voice → piezo chirp; beeper.cpp is piezo-only
+    again. Playback = ESP_I2S begin/end per sound at the file's rate on a
+    short-lived core-0 task; stereo downmixed (mono amp); kGain 0.85;
+    ~32 KB static decode buffers. SD playback gets a FIXED 150 Hz
+    Butterworth high-pass biquad (kHpHz; coefficients from the file's
+    rate, clamp after gain — the bare cone can't make that band, it only
+    wastes excursion; the baked voice.h gets the same cut from
+    make_voice.sh, so "!voice" is deliberately unfiltered). voice.h comes from tools/make_voice.sh
+    (16 kHz mono s16le + a small-speaker mastering chain: HP 150 Hz,
+    +4 dB @300, -3 dB @4.5k, LP 6.8k, 3:1 comp — a straight convert
+    sounded tinny on the bare cone; --raw skips) and stays GITIGNORED
+    like secrets.h (build_webflash.sh sets it aside too). Owner's clip:
+    HAL 9000 "excuse me Patrick, the battery is at 100%" (emp100.mp3).
+    SD LAW: every SD.* access anywhere sits between histSdTake/histSdGive
+    (history.cpp owns mount + minute-retry and mkdirs /sounds on mount);
+    the player holds the lock for a whole clip — CSV queue rides it out.
+    The file lister try-locks 150 ms so a playing clip can't freeze the
+    UI, skips "._" AppleDouble junk, caps at 20 files.
+    STACK LAW (cost a boot-brick loop 2026-08-06): minimp3 keeps ~16 KB
+    of decode scratch on the CALLER'S STACK — the player task needs the
+    24 KB it now has; 4 KB tripped the stack canary (panic in task
+    "sound") the first time a real MP3 decoded, and with that file
+    assigned as the BOOT sound the panel panicked on every boot.
+    Recovery guards now standing: (1) NVS snd.guard armed around every
+    SD playback — if the panel dies mid-decode, next soundInit reverts
+    SD-file slots to defaults, so a poisonous file gets ONE crash ever;
+    (2) a full input buffer with no MP3 sync discards its front instead
+    of scanning forever (oversized ID3 art would have spun core 0 into
+    the task watchdog). Flashing INTO a panic loop works: the app gets
+    ~4 s alive per cycle — plain retry upload lands within an attempt
+    or two (check arduino-cli's own exit status, not the pipe's).
+    UPLOAD PAGE (web_upload.cpp, 2026-08-06, VERIFIED end-to-end via curl:
+    88,442-byte MP3 up + listed on-panel): WebServer :80 on its own core-0
+    task (a multi-second multipart upload must never ride the LVGL loop);
+    GET / list + form, POST /upload (filename sanitized: basename,
+    [A-Za-z0-9._ -], 5-31 chars, .mp3 only, no "._"; aborted uploads
+    SD.remove'd), GET /del?f=. Starts from the wifi-up block in loop()
+    alongside MDNS.begin(MDNS_HOST) + an _http._tcp service record.
+    MDNS_HOST is a config.h knob (default "darksidepwr" = the truck
+    unit's name; THIS bench/FWC unit overrides to "fwcpwr" in secrets.h —
+    mDNS names must be unique per network, and mDNS doesn't cross
+    subnets, so the SOUNDS screen's bottom hint shows the plain-IP URL).
   - PDM mic on IO9 CLK / IO10 DATA, shared with the wireless-module SPI
     pads; unused.
-  Full-charge chirps: arm after 30 consecutive charging samples, fire once
-  when charging stops with SOC >= kChimeSocPct (99, in the .ino), re-arm
-  next session. Serial 'B' plays them on demand.
+  Full-charge alert (soundPlayCharge → the CHARGE choice): ONE
+  announcement PER FILL. Arm after 30 consecutive charging samples;
+  announce at SOC 100 while still charging, else when charging stays
+  stopped for kStopRunSamples (60, ~1 min) with SOC >= kChimeSocPct (99).
+  The s_alertFired latch holds until SOC drains below kRearmSocPct (97) —
+  LESSON (owner-reported "keeps firing", 2026-08-06): the latch used to
+  clear on ANY single non-charging sample, so the 99-100% absorption
+  hover re-announced after every battState flap (current taper, cloud,
+  load kick); the stop path also fired on one-sample flaps. Latch on a
+  RE-ARM SOC THRESHOLD, never on charge-state transitions. Verified on
+  the bench: one fire post-flash at soc=100/charging, then 60+ s silent.
+  Boot sound = soundPlayBoot() at the end of setup(), default silent; an
+  SD boot choice self-waits up to 5 s for the async card mount. Serial
+  'B' plays the charge sound, 'N' opens the SOUNDS screen.
 - Case: `case/darksidepwr-case.3mf` (print-ready Bambu Studio project) +
   `.step` (CAD source, Shapr3D export) — owner-designed enclosure for the
   3.5" panel, added 2026-07-25. Photo of the printed case:
@@ -87,6 +143,9 @@ partition table keeps the nvs partition); `esptool erase-flash` clears it.
   app, and those bytes are read as serial commands (0x55 = 'U' opens the
   setup screen; 0x56 = 'V' starts the minutes-long unit sweep). Check
   which unit is on USB before flashing.
+- **P4 sibling PAUSED (owner directive 2026-08-06): this S3 repo is the
+  only active target.** Do not port changes, rebuild, or update docs in
+  ~/DarksidePWRP4 unless the owner explicitly asks.
 - Serial monitor: open the usbmodem port with pyserial **defaults** (DTR/RTS
   asserted). Setting `dtr=False/rts=False` BEFORE open straps the S3 into ROM
   download mode — the screen goes black because the chip is parked in the
@@ -112,7 +171,7 @@ partition table keeps the nvs partition); `esptool erase-flash` clears it.
 - Debug serial commands (handled in loop()): `S` = screen dump as hex
   RGB565 (decode: `tools/capture_screenshot.py out.png`, pre-cmd args like
   `K 1.5` open a screen first), `U` = setup screen, `C` = control page,
-  `B` = chirps, `V` = unit sweep (solar + vebus), `K` = setup + keyboard up, `D` =
+  `B` = charge sound, `N` = SOUNDS screen, `V` = unit sweep (solar + vebus), `K` = setup + keyboard up, `D` =
   arm the MULTI OFF confirm (real first-tap path, never confirms), `M` = heap/PSRAM
   watermarks (LV_MEM_CUSTOM=1: heap-free IS the LVGL watermark).
   Screenshots in docs/img were made this way — regenerate on UI changes and
@@ -223,8 +282,13 @@ alternator, 3004 for tanks).
 - MODULE MAP since the review refactor: modbus_transport = socket+framing
   only; gx_poller = register map, GxData, the core-0 task, write queue,
   sweep; gx_settings = NVS runtime settings (own mutex, pending-target
-  handoff); config.h = committed non-secret defaults (#ifndef-guarded so
-  secrets.h can override any of them); secrets.h = Wi-Fi credentials only.
+  handoff) + the UI label slots (gxLabel/gxSetLabel — UI-task-only, no
+  lock; ui_labels.cpp is their editor screen); sound = the event-sound
+  choices + I2S/MP3 player (ui_sounds.cpp is their editor screen; beeper
+  = piezo chirp only; web_upload.cpp is the browser side of /sounds);
+  config.h = committed non-secret defaults (#ifndef-guarded so secrets.h
+  can override any of them); secrets.h = Wi-Fi credentials + this unit's
+  identity overrides (title, batt label, MDNS_HOST).
 - A FAULT during the sensor reads skips the remaining sensors for that poll
   (each would stall toward its 500 ms deadline on a desynced stream) and
   cycles the socket with NO backoff — the GX just answered the system reads,
@@ -281,11 +345,19 @@ custom hosts do NOT fall back to the pinned IP) with the LVGL keyboard
 (480x152 at y168 — 36 px input rows keep all three fields visible above it,
 keys stay finger-sized); UNITS °F/°C
 toggle button (applies immediately, like brightness — CANCEL doesn't undo
-either); brightness slider; status line lives in the header. SAVE applies
+either); brightness slider; LABELS button → ui_labels.cpp sub-screen
+(scrollable caption+field column shares the bottom region with the
+keyboard; same diff-against-prefill SAVE; empty field = revert to compile
+default, empty TITLE = auto GX system name; renames repaint live via
+uiLabelsApply and flow to charts/footers on their next refresh); status
+line lives in the header. SAVE applies
 only fields that differ from their open-time prefills — notably Wi-Fi is
 untouched unless the SSID changed or a password was typed, so saving other
 settings can NEVER wipe a stored password. NVS keys (namespace `darkside`):
-wifi.ssid, wifi.pass, bright, gx.addr, tempF — config.h supplies every
+wifi.ssid, wifi.pass, bright, gx.addr, tempF, the label slots
+lbl.title/lbl.batt/lbl.cur/lbl.in/lbl.ac/lbl.tmpN/lbl.tnkN (semantic keys,
+stable across temp/tank list-length changes), and the sound slots
+snd.boot/snd.chg — config.h supplies every
 first-boot default (secrets.h only Wi-Fi + optional overrides).
 SCAN LAW (cost a live debug): esp_wifi_scan_start FAILS while a join attempt
 is in flight, and a bad SSID keeps the radio in a join-retry loop — so
