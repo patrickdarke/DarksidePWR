@@ -15,7 +15,7 @@ touch-configurable — no computer needed after the first flash.
 | **HOUSE** | Battery voltage |
 | **CURRENT** | Battery current — positive charging, negative discharging |
 | **POWER IN** | Total charge input: solar + alternator (Orion XS) combined |
-| **AC LOADS** | AC consumption from the inverter |
+| **AC LOADS / DC LOADS** | One tile, taking 4-second turns: AC consumption from the inverter, then DC system loads |
 | **Temps line** | One reading per configured temperature sensor, in °F or °C (setup screen) |
 | **Tanks line** | LPG levels; a level turns **red** below 20 % |
 | **Power line** | The balance: `PV` solar in, `ALT` alternator in, `DC` DC loads, `NET` battery flow (`+` = charging) |

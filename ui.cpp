@@ -251,7 +251,14 @@ void uiUpdate(const GxData& d) {
   setIfChanged(s_tileVal[1], buf);
   snprintf(buf, sizeof buf, "%d W", d.inW);
   setIfChanged(s_tileVal[2], buf);
-  snprintf(buf, sizeof buf, "%d W", d.acW);
+
+  // Tile 4 rotates AC and DC loads on the same 4 s phase clock as the
+  // top-right clock/IP rotator. The DC phase title is fixed ("DC LOADS");
+  // the AC phase shows the editable label. Tapping still opens the AC
+  // chart — DC watts aren't a recorded history series.
+  const bool dcTurn = (millis() / 4000) & 1;
+  setIfChanged(s_tileTitle[3], dcTurn ? "DC LOADS" : gxLabel(kGxLblAcLoads));
+  snprintf(buf, sizeof buf, "%d W", dcTurn ? d.dcW : d.acW);
   setIfChanged(s_tileVal[3], buf);
 
   // Temps line: muted names, bright values (LVGL recolor markup); a sensor
